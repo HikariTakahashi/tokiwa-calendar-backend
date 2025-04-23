@@ -46,6 +46,7 @@ cd simple-calendar-backend
 // バックエンドのターミナルで実行
 go run main.go
 ```
+注:許可求めてくるけど許可でOK
 
 2. 開発用のサーバーを起動し、サーバーを起動する
 
