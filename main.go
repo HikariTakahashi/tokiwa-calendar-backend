@@ -8,10 +8,6 @@ import (
 	"time"
 )
 
-// カレンダーの基準になる年・月
-var baseYear int
-var baseMonth int
-
 // 構造体Dayの作成（１日のデータをひとまとめ）
 type Day struct {
 	Date string `json:"date"` // "YYYY-MM-DD" 形式の日付
@@ -28,13 +24,15 @@ type CalendarResponse struct {
 // APIのエンドポイントのハンドラー関数
 func calendarHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")           // TSからリクエストを送れるようにする許可
-	w.Header().Set("Content-Type", "application/json")           // レスポンスのデータ型をJSONに
 
 	// クエリパラメータから年・月・移動方向を取得
 	yearStr := r.URL.Query().Get("year")
 	monthStr := r.URL.Query().Get("month")
 	moveStr := r.URL.Query().Get("move")
 
+	// カレンダーの基準になる年・月
+	var baseYear, baseMonth int
+	
 	// クエリパラメータより指定の日時・現在時間を格納
 	if yearStr != "" && monthStr != "" {
 		baseYear, _ = strconv.Atoi(yearStr)
@@ -77,10 +75,10 @@ func calendarHandler(w http.ResponseWriter, r *http.Request) {
 		Month: baseMonth,
 		Days:  days,
 	}
-
-	// resp(データ) → Encode(変換) → レスポンス出力
+    
+	// レスポンスのデータ型をJSONに、resp(データ) → Encode(変換) → レスポンス出力
+	w.Header().Set("Content-Type", "application/json")           
 	// クライアントへ、JSON形式でレスポンスを返す
-	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
 }
 
