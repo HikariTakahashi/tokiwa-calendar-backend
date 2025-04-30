@@ -45,23 +45,20 @@ func calendarHandler(w http.ResponseWriter, r *http.Request) {
 		baseMonth = int(now.Month())
 	}
 
-	// クエリパラメータより月移動
+	// 現在の年月を「1日」で作る（AddDateでズレないように）
+	baseDate := time.Date(baseYear, time.Month(baseMonth), 1, 0, 0, 0, 0, time.UTC)
+
+	// 月移動処理
 	switch moveStr {
 	case "next":
-		if baseMonth == 12 {
-			baseMonth = 1
-			baseYear++   // 12月から1月に移動し、年を増やす
-		} else {
-			baseMonth++  // 月を1つ進める
-		}
+    	baseDate = baseDate.AddDate(0, 1, 0) // 1ヶ月進める
 	case "prev":
-		if baseMonth == 1 {
-			baseMonth = 12
-			baseYear--   // 1月から12月に移動し、年を減らす
-		} else {
-			baseMonth--  // 月を1つ戻す
-		}
+  	  baseDate = baseDate.AddDate(0, -1, 0) // 1ヶ月戻す
 	}
+
+	// 加算後の年月を再代入
+	baseYear = baseDate.Year()
+	baseMonth = int(baseDate.Month())
 
 	daysInMonth := time.Date(baseYear, time.Month(baseMonth)+1, 0, 0, 0, 0, 0, time.UTC).Day()  // 指定された月の月末までの日数を計算
 
