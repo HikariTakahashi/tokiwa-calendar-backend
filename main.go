@@ -35,12 +35,34 @@ func calendarHandler(w http.ResponseWriter, r *http.Request) {
 	
 	// クエリパラメータより指定の日時・現在時間を格納
 	if yearStr != "" && monthStr != "" {
-		baseYear, _ = strconv.Atoi(yearStr)
-		baseMonth, _ = strconv.Atoi(monthStr)
+		var err error
+		baseYear, err = strconv.Atoi(yearStr)
+		if err != nil {
+			http.Error(w, "Invalid year parameter", http.StatusBadRequest)
+			return
+		}
+
+		baseMonth, err = strconv.Atoi(monthStr)
+		if err != nil {
+			http.Error(w, "Invalid month parameter", http.StatusBadRequest)
+			return
+		}
+
+		if baseMonth < 1 || baseMonth > 12 {
+			http.Error(w, "Month must be between 1 and 12", http.StatusBadRequest)
+			return
+		}
+
 	} else {
 		now := time.Now()
 		baseYear = now.Year()
 		baseMonth = int(now.Month())
+	}
+
+	// moveStr の値チェック
+	if moveStr != "" && moveStr != "next" && moveStr != "prev" {
+		http.Error(w, "Invalid move parameter. Use 'next', 'prev', or leave empty.", http.StatusBadRequest)
+		return
 	}
 
 	// 現在の年月を「1日」で作る（AddDateでズレないように）
@@ -79,7 +101,11 @@ func calendarHandler(w http.ResponseWriter, r *http.Request) {
 	// レスポンスのデータ型をJSONに、resp(データ) → Encode(変換) → レスポンス出力
 	w.Header().Set("Content-Type", "application/json")           
 	// クライアントへ、JSON形式でレスポンスを返す
-	json.NewEncoder(w).Encode(resp)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		http.Error(w, "JSON encoding failed", http.StatusInternalServerError)
+		fmt.Println("JSONエンコードエラー:", err)
+		return
+	}
 }
 
 // サーバーのエントリーポイント
