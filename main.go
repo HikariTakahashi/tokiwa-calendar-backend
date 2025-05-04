@@ -47,14 +47,8 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	// 月末計算
 	endOfMonth := getEndOfMonth(baseYear, baseMonth) 
 
-	var days []Day
-	for i := 1; i <= endOfMonth; i++ {                                                         // 1日～月末までループし、１日ずつDay型でデータを作成
-		date := time.Date(baseYear, time.Month(baseMonth), i, 0, 0, 0, 0, time.UTC)
-		days = append(days, Day{                                                                // スライスに格納
-			Date: date.Format("2006-01-02"), // Go特有の日時フォーマット
-			Day:  i,
-		})
-	}
+	// 日付データの作成
+	days := generateDays(baseYear, baseMonth, endOfMonth)
 
 	// レスポンス用の構造体の作成：CalendarResponse に実際のデータを入れる
 	resp := CalendarResponse{
@@ -130,4 +124,19 @@ func adjustDate(baseYear int, baseMonth int, moveStr string)(int, int){
 // 指定された月の月末までの日数を計算
 func getEndOfMonth(year int, month int) int {
 	return time.Date(year, time.Month(month)+1, 0, 0, 0, 0, 0, time.UTC).Day()
+}
+
+// 日付データの生成
+func generateDays(baseYear int, baseMonth int, endOfMonth int) []Day {
+	var days []Day
+	// 1日～月末までループし、１日ずつDay型でデータを作成
+	for i := 1; i <= endOfMonth; i++ {
+		date := time.Date(baseYear, time.Month(baseMonth), i, 0, 0, 0, 0, time.UTC)
+		// スライスに格納
+		days = append(days, Day{                                   
+			Date: date.Format("2006-01-02"), // Go特有の日時フォーマット
+			Day:  i,
+		})
+	}
+	return days
 }
