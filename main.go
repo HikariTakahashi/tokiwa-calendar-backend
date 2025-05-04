@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -63,11 +62,6 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("JSONエンコードエラー:", err)
 		return
 	}
-}
-
-// フロントとバックで別々のドメインよりCORS設定
-func setCORS(w http.ResponseWriter) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 }
 
 // クエリパラメータを解析して、年・月・移動方向を取得する関数
@@ -146,10 +140,4 @@ func generateDays(baseYear int, baseMonth int, endOfMonth int) []Day {
 		days = append(days, generateDay(baseYear, baseMonth, i))
 	}
 	return days
-}
-
-// レスポンスのデータ型をJSONに、resp(データ) → Encode(変換) → レスポンス出力
-func sendJSONResponse(w http.ResponseWriter, data interface{}) error {
-	w.Header().Set("Content-Type", "application/json")
-	return json.NewEncoder(w).Encode(data)
 }
