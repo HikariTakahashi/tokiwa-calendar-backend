@@ -31,8 +31,8 @@ func main() {
 
 // calendar にアクセスされたとき実行される処理
 func handler(w http.ResponseWriter, r *http.Request) {
-	// フロントとバックで別々のドメインよりCORS設定
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	// CORS設定
+	setCORS(w)
 	
 	// クエリパラメータの解析
     baseYear, baseMonth, moveStr, err := parseQueryParams(r)
@@ -65,6 +65,11 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("JSONエンコードエラー:", err)
 		return
 	}
+}
+
+// フロントとバックで別々のドメインよりCORS設定
+func setCORS(w http.ResponseWriter) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 }
 
 // クエリパラメータを解析して、年・月・移動方向を取得する関数
