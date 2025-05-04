@@ -1,0 +1,10 @@
+package main
+
+import (
+	"net/http"
+)
+
+// フロントとバックで別々のドメインよりCORS設定
+func setCORS(w http.ResponseWriter) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+}
