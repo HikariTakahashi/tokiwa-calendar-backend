@@ -126,17 +126,21 @@ func getEndOfMonth(year int, month int) int {
 	return time.Date(year, time.Month(month)+1, 0, 0, 0, 0, 0, time.UTC).Day()
 }
 
+// 日付をDay型で生成する関数
+func generateDay(baseYear int, baseMonth int, day int) Day {
+	date := time.Date(baseYear, time.Month(baseMonth), day, 0, 0, 0, 0, time.UTC)
+	return Day{
+		Date: date.Format("2006-01-02"),  // Go特有の日時フォーマット
+		Day:  day,
+	}
+}
+
 // 日付データの生成
 func generateDays(baseYear int, baseMonth int, endOfMonth int) []Day {
+	// 1日～月末までループし、１日ずつDay型でデータを作成（スライスに格納）
 	var days []Day
-	// 1日～月末までループし、１日ずつDay型でデータを作成
 	for i := 1; i <= endOfMonth; i++ {
-		date := time.Date(baseYear, time.Month(baseMonth), i, 0, 0, 0, 0, time.UTC)
-		// スライスに格納
-		days = append(days, Day{                                   
-			Date: date.Format("2006-01-02"), // Go特有の日時フォーマット
-			Day:  i,
-		})
+		days = append(days, generateDay(baseYear, baseMonth, i))
 	}
 	return days
 }
