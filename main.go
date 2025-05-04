@@ -34,15 +34,18 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	// フロントとバックで別々のドメインよりCORS設定
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	
+	// クエリパラメータの解析
     baseYear, baseMonth, moveStr, err := parseQueryParams(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
+	// 日付の調整
 	baseYear, baseMonth = adjustDate(baseYear, baseMonth, moveStr)
 
-	endOfMonth := time.Date(baseYear, time.Month(baseMonth)+1, 0, 0, 0, 0, 0, time.UTC).Day()  // 指定された月の月末までの日数を計算
+	// 月末計算
+	endOfMonth := getEndOfMonth(baseYear, baseMonth) 
 
 	var days []Day
 	for i := 1; i <= endOfMonth; i++ {                                                         // 1日～月末までループし、１日ずつDay型でデータを作成
@@ -122,4 +125,9 @@ func adjustDate(baseYear int, baseMonth int, moveStr string)(int, int){
 	}
 
 	return baseDate.Year(), int(baseDate.Month())
+}
+
+// 指定された月の月末までの日数を計算
+func getEndOfMonth(year int, month int) int {
+	return time.Date(year, time.Month(month)+1, 0, 0, 0, 0, 0, time.UTC).Day()
 }
