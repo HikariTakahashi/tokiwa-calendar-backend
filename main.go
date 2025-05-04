@@ -15,6 +15,12 @@ type CalendarResponse struct {
 	Days  []Day `json:"days"`  // 各日の配列
 }
 
+// ループ用の構造体
+type Day struct {
+	Date string `json:"date"` // "YYYY-MM-DD" 形式の日付
+	Day  int    `json:"day"`  // 数値の「日」
+}
+
 // サーバーのエントリーポイント
 func main() {
 	// api/calendar というURLに来たリクエストは、calendarHandler という関数で処理する設定
@@ -23,10 +29,45 @@ func main() {
 	http.ListenAndServe(":8080", nil)                 // ポート8080で待機、リクエスト時にHandleFuncが実行される
 }
 
-// ループ用の構造体
-type Day struct {
-	Date string `json:"date"` // "YYYY-MM-DD" 形式の日付
-	Day  int    `json:"day"`  // 数値の「日」
+// calendar にアクセスされたとき実行される処理
+func handler(w http.ResponseWriter, r *http.Request) {
+	// フロントとバックで別々のドメインよりCORS設定
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	
+    baseYear, baseMonth, moveStr, err := parseQueryParams(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	baseYear, baseMonth = adjustDate(baseYear, baseMonth, moveStr)
+
+	endOfMonth := time.Date(baseYear, time.Month(baseMonth)+1, 0, 0, 0, 0, 0, time.UTC).Day()  // 指定された月の月末までの日数を計算
+
+	var days []Day
+	for i := 1; i <= endOfMonth; i++ {                                                         // 1日～月末までループし、１日ずつDay型でデータを作成
+		date := time.Date(baseYear, time.Month(baseMonth), i, 0, 0, 0, 0, time.UTC)
+		days = append(days, Day{                                                                // スライスに格納
+			Date: date.Format("2006-01-02"), // Go特有の日時フォーマット
+			Day:  i,
+		})
+	}
+
+	// レスポンス用の構造体の作成：CalendarResponse に実際のデータを入れる
+	resp := CalendarResponse{
+		Year:  baseYear,
+		Month: baseMonth,
+		Days:  days,
+	}
+    
+	// レスポンスのデータ型をJSONに、resp(データ) → Encode(変換) → レスポンス出力
+	w.Header().Set("Content-Type", "application/json")           
+	// クライアントへ、JSON形式でレスポンスを返す
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		http.Error(w, "JSON encoding failed", http.StatusInternalServerError)
+		fmt.Println("JSONエンコードエラー:", err)
+		return
+	}
 }
 
 // クエリパラメータを解析して、年・月・移動方向を取得する関数
@@ -68,20 +109,8 @@ func parseQueryParams(r *http.Request)(int, int, string, error){
 	return baseYear, baseMonth, moveStr, nil
 }
 
-// calendar にアクセスされたとき実行される処理
-func handler(w http.ResponseWriter, r *http.Request) {
-	// フロントとバックで別々のドメインよりCORS設定
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	
-    baseYear, baseMonth, moveStr, err := parseQueryParams(r)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	fmt.Println("Parsed year:", baseYear, "month:", baseMonth, "move:", moveStr)
-
-	// 現在の年月を「1日」で作る（AddDateでズレないように）
+func adjustDate(baseYear int, baseMonth int, moveStr string)(int, int){
+   // 現在の年月を「1日」で作る（AddDateでズレないように）
 	baseDate := time.Date(baseYear, time.Month(baseMonth), 1, 0, 0, 0, 0, time.UTC)
 
 	// 月移動処理
@@ -92,34 +121,5 @@ func handler(w http.ResponseWriter, r *http.Request) {
   	  baseDate = baseDate.AddDate(0, -1, 0) // 1ヶ月戻す
 	}
 
-	// 加算後の年月を再代入
-	baseYear = baseDate.Year()
-	baseMonth = int(baseDate.Month())
-
-	endOfMonth := time.Date(baseYear, time.Month(baseMonth)+1, 0, 0, 0, 0, 0, time.UTC).Day()  // 指定された月の月末までの日数を計算
-
-	var days []Day
-	for i := 1; i <= endOfMonth; i++ {                                                         // 1日～月末までループし、１日ずつDay型でデータを作成
-		date := time.Date(baseYear, time.Month(baseMonth), i, 0, 0, 0, 0, time.UTC)
-		days = append(days, Day{                                                                // スライスに格納
-			Date: date.Format("2006-01-02"), // Go特有の日時フォーマット
-			Day:  i,
-		})
-	}
-
-	// レスポンス用の構造体の作成：CalendarResponse に実際のデータを入れる
-	resp := CalendarResponse{
-		Year:  baseYear,
-		Month: baseMonth,
-		Days:  days,
-	}
-    
-	// レスポンスのデータ型をJSONに、resp(データ) → Encode(変換) → レスポンス出力
-	w.Header().Set("Content-Type", "application/json")           
-	// クライアントへ、JSON形式でレスポンスを返す
-	if err := json.NewEncoder(w).Encode(resp); err != nil {
-		http.Error(w, "JSON encoding failed", http.StatusInternalServerError)
-		fmt.Println("JSONエンコードエラー:", err)
-		return
-	}
+	return baseDate.Year(), int(baseDate.Month())
 }
