@@ -56,11 +56,9 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		Month: baseMonth,
 		Days:  days,
 	}
-    
-	// レスポンスのデータ型をJSONに、resp(データ) → Encode(変換) → レスポンス出力
-	w.Header().Set("Content-Type", "application/json")           
+     
 	// クライアントへ、JSON形式でレスポンスを返す
-	if err := json.NewEncoder(w).Encode(resp); err != nil {
+	if err := sendJSONResponse(w, resp); err != nil {
 		http.Error(w, "JSON encoding failed", http.StatusInternalServerError)
 		fmt.Println("JSONエンコードエラー:", err)
 		return
@@ -148,4 +146,10 @@ func generateDays(baseYear int, baseMonth int, endOfMonth int) []Day {
 		days = append(days, generateDay(baseYear, baseMonth, i))
 	}
 	return days
+}
+
+// レスポンスのデータ型をJSONに、resp(データ) → Encode(変換) → レスポンス出力
+func sendJSONResponse(w http.ResponseWriter, data interface{}) error {
+	w.Header().Set("Content-Type", "application/json")
+	return json.NewEncoder(w).Encode(data)
 }
