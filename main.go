@@ -5,17 +5,11 @@ import (
 	"net/http"
 )
 
-// レスポンス用の構造体
+// カレンダーのレスポンスに使う構造体
 type CalendarResponse struct {
 	Year  int   `json:"year"`  // 対象の年
 	Month int   `json:"month"` // 対象の月
 	Days  []Day `json:"days"`  // 各日の配列
-}
-
-// ループ用の構造体
-type Day struct {
-	Date string `json:"date"` // "YYYY-MM-DD" 形式の日付
-	Day  int    `json:"day"`  // 数値の「日」
 }
 
 // サーバーのエントリーポイント
@@ -47,17 +41,23 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	// 日付データの作成
 	days := generateDays(baseYear, baseMonth, endOfMonth)
 
-	// レスポンス用の構造体の作成：CalendarResponse に実際のデータを入れる
+	// カレンダーのレスポンスを作成して送信
+	if err := sendCalendarResponse(w, baseYear, baseMonth, days); err != nil {
+		http.Error(w, "JSON encoding failed", http.StatusInternalServerError)
+		fmt.Println("JSONエンコードエラー:", err)
+		return
+	}
+}
+
+// カレンダーのレスポンスを作成して送信する処理
+func sendCalendarResponse(w http.ResponseWriter, baseYear, baseMonth int, days []Day) error {
+	// レスポンス用の構造体の作成
 	resp := CalendarResponse{
 		Year:  baseYear,
 		Month: baseMonth,
 		Days:  days,
 	}
-     
-	// クライアントへ、JSON形式でレスポンスを返す
-	if err := sendJSONResponse(w, resp); err != nil {
-		http.Error(w, "JSON encoding failed", http.StatusInternalServerError)
-		fmt.Println("JSONエンコードエラー:", err)
-		return
-	}
+
+	// クライアントへJSON形式でレスポンスを返す
+	return sendJSONResponse(w, resp)
 }

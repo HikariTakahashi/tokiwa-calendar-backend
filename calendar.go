@@ -2,6 +2,12 @@ package main
 
 import "time"
 
+// 各日のデータ構造
+type Day struct {
+	Date string `json:"date"` // "YYYY-MM-DD" 形式の日付
+	Day  int    `json:"day"`  // 数値の「日」
+}
+
 func adjustDate(baseYear int, baseMonth int, moveStr string)(int, int){
    // 現在の年月を「1日」で作る（AddDateでズレないように）
 	baseDate := time.Date(baseYear, time.Month(baseMonth), 1, 0, 0, 0, 0, time.UTC)
