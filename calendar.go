@@ -5,7 +5,7 @@ import "time"
 // 各日のデータ構造
 type Day struct {
 	Date string `json:"date"` // "YYYY-MM-DD" 形式の日付
-	Day  int    `json:"day"`  // 数値の「日」
+	Week string `json:"week"`  // "Mon", "Tue", など
 }
 
 func adjustDate(baseYear int, baseMonth int, moveStr string)(int, int){
@@ -31,9 +31,12 @@ func getEndOfMonth(year int, month int) int {
 // 日付をDay型で生成する関数
 func generateDay(baseYear int, baseMonth int, day int) Day {
 	date := time.Date(baseYear, time.Month(baseMonth), day, 0, 0, 0, 0, time.UTC)
+	
+	week := date.Weekday().String()[:3] //曜日を3文字に
+
 	return Day{
 		Date: date.Format("2006-01-02"),  // Go特有の日時フォーマット
-		Day:  day,
+		Week: week,
 	}
 }
 
