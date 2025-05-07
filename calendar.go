@@ -41,32 +41,50 @@ func generateDay(baseYear int, baseMonth int, day int) Day {
 
 // 日付データの生成
 func generateDays(baseYear int, baseMonth int, endOfMonth int) []Day {
-	// 1日～月末までループし、１日ずつDay型でデータを作成（スライスに格納）
+	// Day型でデータをスライスに格納
 	var days []Day
 
-	// 前月分を追加する処理（1日の曜日が日曜でない場合）
+	// 日曜スタートにする処理
 	firstDay := time.Date(baseYear, time.Month(baseMonth), 1, 0, 0, 0, 0, time.UTC)
-	weekday := int(firstDay.Weekday()) // Sunday=0, Monday=1,...
+	weekday := int(firstDay.Weekday()) // // 月初の曜日を取得
 
 	if weekday != 0 {
-		// 1月の時の12月の処理
+		// ケース：1月時の12月処理
 		prevYear, prevMonth := baseYear, int(time.Month(baseMonth)-1)
 		if prevMonth < 1 {
 			prevYear--
 			prevMonth = 12
 		}
-        
-		// 前月の末日から、必要な日数分だけ生成して前に追加
+        // 前月の末日から、必要な日数分だけ生成して前に追加
 		prevEnd := getEndOfMonth(prevYear, prevMonth)
-		// 0(日曜)でなかったら、1日の曜日から0になるまで引く
+		// 1日の曜日から日曜(0)になるまで引く
 		for i := weekday - 1; i >= 0; i-- {
 			days = append(days, generateDay(prevYear, prevMonth, prevEnd - i)) // prevEnd - iにより、古い日付から生成
 		}
 	}
 
-	// 該当月の日付データ生成
+    // 対象月の日付データ生成
 	for i := 1; i <= endOfMonth; i++ {
 		days = append(days, generateDay(baseYear, baseMonth, i))
+	}
+
+    // 土曜フィニッシュにする処理
+	lastDay := time.Date(baseYear, time.Month(baseMonth), endOfMonth, 0, 0, 0, 0, time.UTC)
+	lastDayWeekday := int(lastDay.Weekday()) // 月末の曜日を取得
+
+    // ケース：月末が土曜(6)でない場合、次の月の土曜日までデータを追加
+	if lastDayWeekday != 6 { 
+		
+		// 次の月 → 次の月の1日 → 次の月の1日の曜日を取得
+		nextMonthYear, nextMonth := adjustDate(baseYear, baseMonth, "next")
+		nextMonthFirstDay := time.Date(nextMonthYear, time.Month(nextMonth), 1, 0, 0, 0, 0, time.UTC)
+		nextMonthWeekday := int(nextMonthFirstDay.Weekday()) // 次の月の1日が何曜日か
+
+		// 次の月の1日から、土曜(6)まで繰り返す
+		for i := 1; nextMonthWeekday <= 6; i++ {
+			days = append(days, generateDay(nextMonthYear, nextMonth, i))
+			nextMonthWeekday++
+		}
 	}
 	return days
 }
