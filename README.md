@@ -22,6 +22,9 @@ cd simple-calendar-frontend
 
 // Node.jsのパッケージ管理システムをインストール
 npm install
+
+// UIライブラリのインストール
+npm install vue-drumroll-datetime-picker
 ```
 
 ## 起動準備(バックエンド)
