@@ -14,6 +14,10 @@ type TimeData struct {
 
 // /api/time にPOSTされた時の処理
 func postHandler(w http.ResponseWriter, r *http.Request) {
+
+    // ターミナルにリクエスト受信の通知を表示（追加）
+	fmt.Println("POSTリクエストを受信しました")
+
 	// OPTIONSリクエストの場合はCORSプリフライトとして処理
 	if r.Method == "OPTIONS" {
 		setCORS(w)
