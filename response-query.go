@@ -23,12 +23,6 @@ func gethandler(w http.ResponseWriter, r *http.Request) {
 
     // CORS設定
 	setCORS(w)
-
-	// GETメソッド以外は拒否
-    if r.Method != http.MethodGet {
-        http.Error(w, "GETメソッドのみ許可されています", http.StatusMethodNotAllowed)
-        return
-    }
 	
 	// クエリパラメータを取得・解析（?year=2024&month=5&move=prev など）
     baseYear, baseMonth, moveStr, err := parseQueryParams(r)

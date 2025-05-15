@@ -8,7 +8,6 @@ import (
 
 // POSTで受け取るデータの構造体
 type TimeData struct {
-	Date  string `json:"date"`
 	Start string `json:"start"`
 	End   string `json:"end"`
 }
@@ -18,14 +17,10 @@ func postHandler(w http.ResponseWriter, r *http.Request) {
 	// フロントエンドからのアクセスを許可（CORS対応）
 	setCORS(w)
 
-	// POSTメソッド以外は405エラーを返す
-	if r.Method != http.MethodPost {
-		http.Error(w, "POSTメソッドのみ許可されています", http.StatusMethodNotAllowed)
-		return
-	}
+    // 複数日付データを格納するマップを用意
+	var data map[string]TimeData
 
 	// リクエストのJSONをTimeData構造体に変換（デコード）
-	var data TimeData
 	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
 		http.Error(w, "JSONの解析に失敗しました", http.StatusBadRequest)
 		fmt.Println("デコードエラー:", err)
