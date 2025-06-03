@@ -56,6 +56,7 @@ func main() {
 	fmt.Println("Firebase Admin SDKとFirestoreクライアントが正常に初期化されました。")
 
 	http.HandleFunc("/api/time", postHandler) // postHandlerは別途定義が必要です
+	http.HandleFunc("/api/time/", getHandler) // getHandlerは別途定義が必要です
 	fmt.Println("Listening on :8080")
 
 	log.Fatal(http.ListenAndServe(":8080", nil))
