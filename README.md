@@ -40,6 +40,16 @@ git clone https://github.com/HikariTakahashi/simple-calendar-backend.git
 cd simple-calendar-backend
 ```
 
+3. Firebaseへの接続準備
+バックエンドサーバーはデータの永続化にFirebase (Firestore) を利用しています。そのため、以下の準備が必要です。
+
+- GOOGLE_APPLICATION_CREDENTIALS_JSON 環境変数の設定: 
+Firebaseのサービスアカウントキー(JSONファイル)はチームメンバーが管理しています。開発に必要なサービスアカウントキーの情報を受け取り、GOOGLE_APPLICATION_CREDENTIALS_JSON という名前の環境変数に設定してください。この環境変数を設定することで、Firebaseへの認証を行えるようになります。
+- Firestoreへのアクセス権限: 
+開発に使用するGoogleアカウントが、対象のFirestoreデータベースへの読み書き権限を持っていることが必要です。必要に応じて、Firebaseプロジェクトの管理者に招待を依頼してください。
+
+これらの設定が正しく行われていない場合、バックエンドサーバーは起動時またはデータアクセス時にエラーを発生させます。
+
 ## 開発サーバーの起動
 
 1. バックエンド起動（Go 言語）
