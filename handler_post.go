@@ -7,6 +7,7 @@ import (
 )
 
 // /api/time にPOSTでリクエストが来た時の処理
+// フロントからのJSONリクエスト（POST）を受け取る処理
 func postHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("POSTリクエストを受信しました")
 	setCORS(w) // CORSヘッダーを設定
@@ -32,18 +33,15 @@ func postHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
-	// 解析したデータを渡し、Firestoreへの保存処理を呼び出す
-	spaceId, savedEvents, err := processAndSaveSchedule(r.Context(), requestData)
+	// 受け取ったPOSTデータを解析・加工する処理を呼び出す
+	spaceId, eventsToStore, err := transformScheduleData(requestData)
 	if err != nil {
-		http.Error(w, "データの処理または保存に失敗しました: "+err.Error(), http.StatusInternalServerError)
-		fmt.Printf("処理エラー: %v\n", err)
+		http.Error(w, "データ形式の解析に失敗しました: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-
 	// 保存する有効なイベントがなかった場合のレスポンス
-	if len(savedEvents) == 0 {
+	if len(eventsToStore) == 0 {
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(map[string]string{
 			"message": "有効なカレンダーイベントデータが見つかりませんでした。",
@@ -52,12 +50,20 @@ func postHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// DBに保存する処理を呼び出す
+	if err := saveScheduleToFirestore(r.Context(), spaceId, eventsToStore); err != nil {
+		http.Error(w, "データの処理または保存に失敗しました: "+err.Error(), http.StatusInternalServerError)
+		fmt.Printf("処理エラー: %v\n", err)
+		return
+	}
+
 	// 成功した場合のレスポンス
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	response := map[string]interface{}{
-		"message":   "データは正常に受信され、Firestoreに保存されました。",
-		"spaceId":   spaceId,
-		"savedEvents": savedEvents,
+		"message":     "データは正常に受信され、Firestoreに保存されました。",
+		"spaceId":     spaceId,
+		"savedEvents": eventsToStore,
 	}
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		fmt.Println("レスポンスのJSONエンコードに失敗しました:", err)

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 )
 
@@ -12,19 +11,17 @@ type TimeEntry struct {
 	Order *int   `json:"order,omitempty"`
 }
 
-// processAndSaveSchedule: 受け取ったデータを解析・整形し、Firestoreに保存する
-func processAndSaveSchedule(ctx context.Context, requestData map[string]interface{}) (string, map[string][]TimeEntry, error) {
-	// Firestoreクライアントの存在確認
-	if client == nil {
-		return "", nil, fmt.Errorf("重大なエラー: Firestoreクライアントが初期化されていません")
-	}
-
+// response-post.goで受け取ったPOSTデータを解析・加工する処理
+func transformScheduleData(requestData map[string]interface{}) (string, map[string][]TimeEntry, error) {
 	// requestDateマップから"spaceID"というキーで値を取得
 	spaceIdInterface, ok := requestData["spaceId"]
 	if !ok {
 		return "", nil, fmt.Errorf("'spaceId' がリクエストデータに含まれていません")
 	}
-	spaceId := spaceIdInterface.(string)
+	spaceId, ok := spaceIdInterface.(string)
+	if !ok || spaceId == "" {
+		return "", nil, fmt.Errorf("'spaceId' が無効です")
+	}
 
 	// スケジュールデータの整理
 	// eventsToStore：Firestoreに保存するための、最終的なきれいなデータを格納する変数
@@ -38,7 +35,10 @@ func processAndSaveSchedule(ctx context.Context, requestData map[string]interfac
 		}
 
 		// valueをinterface{}型から[]interface{}型に変換
-		eventList := value.([]interface{})
+		eventList, ok := value.([]interface{})
+		if !ok {
+			return "", nil, fmt.Errorf("キー '%s' の値がイベントの配列ではありません", key)
+		}
 
 		var dateEvents []TimeEntry
 		for i, eventInterface := range eventList {
@@ -64,18 +64,6 @@ func processAndSaveSchedule(ctx context.Context, requestData map[string]interfac
 			dateEvents = append(dateEvents, TimeEntry{Start: startStr, End: endStr, Order: orderPtr})
 		}
 		eventsToStore[key] = dateEvents
-	}
-
-	// 保存すべきイベントがない場合は、処理を中断してその旨を返す
-	if len(eventsToStore) == 0 {
-		return spaceId, nil, nil
-	}
-
-	// Firestoreにデータを保存
-	docRef := client.Collection("schedules").Doc(spaceId)
-	_, err := docRef.Set(ctx, eventsToStore)
-	if err != nil {
-		return "", nil, fmt.Errorf("Firestoreへのデータ保存に失敗しました: %w", err)
 	}
 
 	return spaceId, eventsToStore, nil

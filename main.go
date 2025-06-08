@@ -14,12 +14,14 @@ import (
 )
 
 var client *firestore.Client
+
+// 全体の処理の枠組み、フレームワーク
 func main() {
 
 	// .envファイルを読み込む
-	err := godotenv.Load() 
+	err := godotenv.Load()
 	if err != nil {
-		log.Fatalf("Error loading .env file: %v", err) 
+		log.Fatalf("Error loading .env file: %v", err)
 	}
 
 	// Firestoreクライアントの初期化
@@ -55,8 +57,9 @@ func main() {
 
 	fmt.Println("Firebase Admin SDKとFirestoreクライアントが正常に初期化されました。")
 
-	http.HandleFunc("/api/time", postHandler) // postHandlerは別途定義が必要です
-	http.HandleFunc("/api/time/", getHandler) // getHandlerは別途定義が必要です
+	// --- ルーティング ---
+	http.HandleFunc("/api/time", postHandler) // POSTリクエストのハンドラを登録
+	http.HandleFunc("/api/time/", getHandler) // GETリクエストのハンドラを登録
 	fmt.Println("Listening on :8080")
 
 	log.Fatal(http.ListenAndServe(":8080", nil))

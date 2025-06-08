@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -9,6 +8,8 @@ import (
 )
 
 // /api/time/{spaceId} にGETされた時の処理
+// フロントからのクエリ（Get）を受け取る処理
+// 受け取ったクエリを解析・加工する処理
 func getHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("GETリクエストを受信しました")
 
@@ -40,24 +41,23 @@ func getHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Firestoreからデータを取得
-	docRef := client.Collection("schedules").Doc(spaceId)
-	doc, err := docRef.Get(context.Background())
+	// DBを参照し、データを取得する処理を呼び出す
+	data, err := getScheduleFromFirestore(r.Context(), spaceId)
 	if err != nil {
 		http.Error(w, "データの取得に失敗しました: "+err.Error(), http.StatusInternalServerError)
 		fmt.Printf("Firestore Getエラー (spaceId: %s): %v\n", spaceId, err)
 		return
 	}
 
-	// データが存在しない場合
-	if !doc.Exists() {
+	// データが存在しない場合 (getScheduleFromFirestoreがnilを返却する)
+	if data == nil {
 		http.Error(w, "指定されたspaceIdのデータが見つかりません", http.StatusNotFound)
 		return
 	}
 
 	// データをJSONとして返す
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(doc.Data()); err != nil {
+	if err := json.NewEncoder(w).Encode(data); err != nil {
 		fmt.Println("レスポンスのJSONエンコードに失敗しました:", err)
 	}
-} 
+}
