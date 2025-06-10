@@ -6,9 +6,11 @@ import (
 
 // TimeEntry は各イベントの開始時刻、終了時刻、順序を格納する構造体
 type TimeEntry struct {
-	Start string `json:"start"`
-	End   string `json:"end"`
-	Order *int   `json:"order,omitempty"`
+	Start     string `json:"start"`
+	End       string `json:"end"`
+	Order     *int   `json:"order,omitempty"`
+	Username  string `json:"username"`
+	UserColor string `json:"userColor"`
 }
 
 // response-post.goで受け取ったPOSTデータを解析・加工する処理
@@ -23,6 +25,25 @@ func transformScheduleData(requestData map[string]interface{}) (string, map[stri
 		return "", nil, fmt.Errorf("'spaceId' が無効です")
 	}
 
+	// usernameとuserColorの取得
+	usernameInterface, ok := requestData["username"]
+	if !ok {
+		return "", nil, fmt.Errorf("'username' がリクエストデータに含まれていません")
+	}
+	username, ok := usernameInterface.(string)
+	if !ok || username == "" {
+		return "", nil, fmt.Errorf("'username' が無効です")
+	}
+
+	userColorInterface, ok := requestData["userColor"]
+	if !ok {
+		return "", nil, fmt.Errorf("'userColor' がリクエストデータに含まれていません")
+	}
+	userColor, ok := userColorInterface.(string)
+	if !ok || userColor == "" {
+		return "", nil, fmt.Errorf("'userColor' が無効です")
+	}
+
 	// スケジュールデータの整理
 	// eventsToStore：Firestoreに保存するための、最終的なきれいなデータを格納する変数
 	eventsToStore := make(map[string][]TimeEntry)
@@ -30,7 +51,7 @@ func transformScheduleData(requestData map[string]interface{}) (string, map[stri
 	// 外側ループ：requestDateからkeyが"spaceId"以外の者をループ処理
 	// key:"2025-06-12"等が、value： [{"start":...}] ような配列が入る
 	for key, value := range requestData {
-		if key == "spaceId" {
+		if key == "spaceId" || key == "username" || key == "userColor" {
 			continue
 		}
 
@@ -61,7 +82,13 @@ func transformScheduleData(requestData map[string]interface{}) (string, map[stri
 			} else {
 				orderPtr = &defaultValue
 			}
-			dateEvents = append(dateEvents, TimeEntry{Start: startStr, End: endStr, Order: orderPtr})
+			dateEvents = append(dateEvents, TimeEntry{
+				Start:     startStr,
+				End:       endStr,
+				Order:     orderPtr,
+				Username:  username,
+				UserColor: userColor,
+			})
 		}
 		eventsToStore[key] = dateEvents
 	}
