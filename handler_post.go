@@ -1,72 +1,50 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
+
+	"github.com/aws/aws-lambda-go/events"
 )
 
-// /api/time にPOSTでリクエストが来た時の処理
-// フロントからのJSONリクエスト（POST）を受け取る処理
-func postHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("POSTリクエストを受信しました")
-	setCORS(w) // CORSヘッダーを設定
-
-	// 正当なリクエストだけ受け付ける処理
-	// OPTIONSメソッドのチェック
-	if r.Method == http.MethodOptions {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
-	// POSTメソッド以外はエラー
-	if r.Method != http.MethodPost {
-		http.Error(w, "許可されていないメソッドです (POSTのみ許可)", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// JSONデータの受信と解析
+func processPostRequest(ctx context.Context, req interface{}) (map[string]interface{}, int) {
 	var requestData map[string]interface{}
-	if err := json.NewDecoder(r.Body).Decode(&requestData); err != nil {
-		http.Error(w, "JSONの解析に失敗しました: "+err.Error(), http.StatusBadRequest)
-		return
-	}
-	defer r.Body.Close()
+	var err error
 
-	// 受け取ったPOSTデータを解析・加工する処理を呼び出す
+	switch r := req.(type) {
+	case *http.Request:
+		err = json.NewDecoder(r.Body).Decode(&requestData)
+		defer r.Body.Close()
+	case events.APIGatewayProxyRequest:
+		err = json.Unmarshal([]byte(r.Body), &requestData)
+	default:
+		return map[string]interface{}{"error": "不明なリクエストタイプです"}, http.StatusInternalServerError
+	}
+
+	if err != nil {
+		return map[string]interface{}{"error": "JSONの解析に失敗しました: " + err.Error()}, http.StatusBadRequest
+	}
+
 	spaceId, eventsToStore, err := transformScheduleData(requestData)
 	if err != nil {
-		http.Error(w, "データ形式の解析に失敗しました: "+err.Error(), http.StatusBadRequest)
-		return
+		return map[string]interface{}{"error": "データ形式の解析に失敗しました: " + err.Error()}, http.StatusBadRequest
 	}
 
-	// 保存する有効なイベントがなかった場合のレスポンス
 	if len(eventsToStore) == 0 {
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]string{
-			"message": "有効なカレンダーイベントデータが見つかりませんでした。",
-			"spaceId": spaceId,
-		})
-		return
+		return map[string]interface{}{
+			"message": "有効なカレンダーイベントデータが見つかりませんでした。", "spaceId": spaceId,
+		}, http.StatusOK
 	}
 
-	// DBに保存する処理を呼び出す
-	if err := saveScheduleToFirestore(r.Context(), spaceId, eventsToStore); err != nil {
-		http.Error(w, "データの処理または保存に失敗しました: "+err.Error(), http.StatusInternalServerError)
+	if err := saveScheduleToFirestore(ctx, spaceId, eventsToStore); err != nil {
 		fmt.Printf("処理エラー: %v\n", err)
-		return
+		return map[string]interface{}{"error": "データの処理または保存に失敗しました: " + err.Error()}, http.StatusInternalServerError
 	}
 
-	// 成功した場合のレスポンス
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	response := map[string]interface{}{
-		"message":     "データは正常に受信され、Firestoreに保存されました。",
-		"spaceId":     spaceId,
-		"savedEvents": eventsToStore,
-	}
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		fmt.Println("レスポンスのJSONエンコードに失敗しました:", err)
-	}
 	fmt.Printf("データがFirestoreに正常に保存されました。Document ID: %s\n", spaceId)
+	return map[string]interface{}{
+		"message": "データは正常に受信され、Firestoreに保存されました。", "spaceId": spaceId, "savedEvents": eventsToStore,
+	}, http.StatusOK
 }

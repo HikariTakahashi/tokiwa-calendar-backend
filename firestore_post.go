@@ -13,7 +13,7 @@ func saveScheduleToFirestore(ctx context.Context, spaceId string, eventsToStore 
 	}
 
 	// Firestoreにデータを保存
-	docRef := client.Collection("schedules").Doc(spaceId)
+	docRef := client.Collection(firestoreCollectionName).Doc(spaceId)
 	_, err := docRef.Set(ctx, eventsToStore)
 	if err != nil {
 		return fmt.Errorf("firestoreへのデータ保存に失敗しました: %w", err)

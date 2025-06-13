@@ -1,66 +1,62 @@
+// main.go (クリーンな状態)
+
+//go:build local
+
 package main
 
 import (
-	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
-	"os"
-
-	"cloud.google.com/go/firestore"
-	firebase "firebase.google.com/go/v4"
-	"github.com/joho/godotenv"
-	"google.golang.org/api/option"
+	"strings"
 )
 
-var client *firestore.Client
-
-// 全体の処理の枠組み、フレームワーク
 func main() {
-
-	// .envファイルを読み込む
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatalf("Error loading .env file: %v", err)
-	}
-
-	// Firestoreクライアントの初期化
-	ctx := context.Background()
-
-	// サービスアカウントキーのJSONを環境変数から読み込む
-	serviceAccountJSON := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON")
-	if serviceAccountJSON == "" {
-		log.Fatalf("環境変数 GOOGLE_APPLICATION_CREDENTIALS_JSON が設定されていません。")
-	}
-
-	// 環境変数から読み込んだJSON文字列を使って認証情報を設定
-	authOption := option.WithCredentialsJSON([]byte(serviceAccountJSON))
-
-	// セッション作成（認証情報を使ってFirebase Admin SDKを初期化し、Firebaseサービスへのアクセス許可）
-	app, err := firebase.NewApp(ctx, nil, authOption)
-	if err != nil {
-		log.Fatalf("Firebase Admin SDKの初期化に失敗しました: %v", err)
-	}
-
-	// Firestoreクライアントの作成
-	client, err = app.Firestore(ctx)
-	if err != nil {
-		log.Fatalf("Firestoreクライアントの取得に失敗しました: %v", err)
-	}
-
-	//　セッションを閉じる
-	defer func() {
-		if err := client.Close(); err != nil {
-			log.Printf("Firestoreクライアントのクローズに失敗しました: %v", err)
+	// POST /api/time
+	http.HandleFunc("/api/time", func(w http.ResponseWriter, r *http.Request) {
+		// CORSプリフライトリクエストに対応
+		if r.Method == http.MethodOptions {
+			setCORS(w)
+			w.WriteHeader(http.StatusOK)
+			return
 		}
-	}()
+		setCORS(w) // 通常のリクエストにもCORSヘッダーを設定
 
-	fmt.Println("Firebase Admin SDKとFirestoreクライアントが正常に初期化されました。")
+		// 共通のロジックを呼び出す
+		response, statusCode := processPostRequest(r.Context(), r)
 
-	// --- ルーティング ---
-	http.HandleFunc("/api/time", postHandler) // POSTリクエストのハンドラを登録
-	http.HandleFunc("/api/time/", getHandler) // GETリクエストのハンドラを登録
-	fmt.Println("Listening on :8080")
+		// 結果をHTTPレスポンスとして返す
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(statusCode)
+		json.NewEncoder(w).Encode(response)
+	})
 
+	// GET /api/time/{spaceId}
+	http.HandleFunc("/api/time/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodOptions {
+			setCORS(w)
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		setCORS(w)
+
+		parts := strings.Split(r.URL.Path, "/")
+		if len(parts) < 4 || parts[3] == "" {
+			http.Error(w, "Invalid URL: spaceId is missing", http.StatusBadRequest)
+			return
+		}
+		spaceId := parts[3]
+
+		// 共通のロジックを呼び出す
+		response, statusCode := processGetRequest(r.Context(), spaceId)
+
+		// 結果をHTTPレスポンスとして返す
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(statusCode)
+		json.NewEncoder(w).Encode(response)
+	})
+
+	fmt.Println("Starting local server on :8080...")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
