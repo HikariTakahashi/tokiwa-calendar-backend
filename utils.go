@@ -4,18 +4,19 @@ package main
 import "net/http"
 
 // ローカルサーバー用: http.ResponseWriterに直接CORSヘッダーを設定
+// (本番ビルドでは使われない)
 func setCORS(w http.ResponseWriter) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, DELETE")
+	w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
 }
 
 // Lambda用: CORSヘッダーのマップを返す
-// この関数が main_lambda.go から呼ばれる
+// (main_lambda.go から呼ばれる)
 func getCorsHeaders() map[string]string {
 	return map[string]string{
 		"Access-Control-Allow-Origin":  "*",
-		"Access-control-Allow-Methods": "GET, POST, OPTIONS",
-		"Access-Control-Allow-Headers": "Content-Type",
+		"Access-Control-Allow-Methods": "POST, GET, OPTIONS, PUT, DELETE",
+		"Access-Control-Allow-Headers": "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization",
 	}
 }
