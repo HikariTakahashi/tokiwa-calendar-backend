@@ -34,24 +34,32 @@ func postHandler(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
 	// 受け取ったPOSTデータを解析・加工する処理を呼び出す
-	spaceId, eventsToStore, err := transformScheduleData(requestData)
+	spaceId, scheduleData, err := transformScheduleData(requestData)
 	if err != nil {
 		http.Error(w, "データ形式の解析に失敗しました: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	// 保存する有効なイベントがなかった場合のレスポンス
-	if len(eventsToStore) == 0 {
+	if len(scheduleData.Events) == 0 {
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]string{
+		response := map[string]interface{}{
 			"message": "有効なカレンダーイベントデータが見つかりませんでした。",
 			"spaceId": spaceId,
-		})
+		}
+		// startDateとendDateが存在する場合のみレスポンスに含める
+		if scheduleData.StartDate != nil && *scheduleData.StartDate != "" {
+			response["startDate"] = *scheduleData.StartDate
+		}
+		if scheduleData.EndDate != nil && *scheduleData.EndDate != "" {
+			response["endDate"] = *scheduleData.EndDate
+		}
+		json.NewEncoder(w).Encode(response)
 		return
 	}
 
 	// DBに保存する処理を呼び出す
-	if err := saveScheduleToFirestore(r.Context(), spaceId, eventsToStore); err != nil {
+	if err := saveScheduleToFirestore(r.Context(), spaceId, scheduleData); err != nil {
 		http.Error(w, "データの処理または保存に失敗しました: "+err.Error(), http.StatusInternalServerError)
 		fmt.Printf("処理エラー: %v\n", err)
 		return
@@ -63,7 +71,14 @@ func postHandler(w http.ResponseWriter, r *http.Request) {
 	response := map[string]interface{}{
 		"message":     "データは正常に受信され、Firestoreに保存されました。",
 		"spaceId":     spaceId,
-		"savedEvents": eventsToStore,
+		"savedEvents": scheduleData.Events,
+	}
+	// startDateとendDateが存在する場合のみレスポンスに含める
+	if scheduleData.StartDate != nil && *scheduleData.StartDate != "" {
+		response["startDate"] = *scheduleData.StartDate
+	}
+	if scheduleData.EndDate != nil && *scheduleData.EndDate != "" {
+		response["endDate"] = *scheduleData.EndDate
 	}
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		fmt.Println("レスポンスのJSONエンコードに失敗しました:", err)
