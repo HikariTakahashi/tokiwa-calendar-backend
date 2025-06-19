@@ -44,8 +44,9 @@ func postHandler(w http.ResponseWriter, r *http.Request) {
 	if len(scheduleData.Events) == 0 {
 		w.WriteHeader(http.StatusOK)
 		response := map[string]interface{}{
-			"message": "有効なカレンダーイベントデータが見つかりませんでした。",
-			"spaceId": spaceId,
+			"message":        "有効なカレンダーイベントデータが見つかりませんでした。",
+			"spaceId":        spaceId,
+			"allowOtherEdit": scheduleData.AllowOtherEdit,
 		}
 		// startDateとendDateが存在する場合のみレスポンスに含める
 		if scheduleData.StartDate != nil && *scheduleData.StartDate != "" {
@@ -69,9 +70,10 @@ func postHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	response := map[string]interface{}{
-		"message":     "データは正常に受信され、Firestoreに保存されました。",
-		"spaceId":     spaceId,
-		"savedEvents": scheduleData.Events,
+		"message":        "データは正常に受信され、Firestoreに保存されました。",
+		"spaceId":        spaceId,
+		"savedEvents":    scheduleData.Events,
+		"allowOtherEdit": scheduleData.AllowOtherEdit,
 	}
 	// startDateとendDateが存在する場合のみレスポンスに含める
 	if scheduleData.StartDate != nil && *scheduleData.StartDate != "" {
