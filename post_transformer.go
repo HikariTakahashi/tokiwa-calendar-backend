@@ -25,25 +25,6 @@ func transformScheduleData(requestData map[string]interface{}) (string, map[stri
 		return "", nil, fmt.Errorf("'spaceId' が無効です")
 	}
 
-	// usernameとuserColorの取得
-	usernameInterface, ok := requestData["username"]
-	if !ok {
-		return "", nil, fmt.Errorf("'username' がリクエストデータに含まれていません")
-	}
-	username, ok := usernameInterface.(string)
-	if !ok || username == "" {
-		return "", nil, fmt.Errorf("'username' が無効です")
-	}
-
-	userColorInterface, ok := requestData["userColor"]
-	if !ok {
-		return "", nil, fmt.Errorf("'userColor' がリクエストデータに含まれていません")
-	}
-	userColor, ok := userColorInterface.(string)
-	if !ok || userColor == "" {
-		return "", nil, fmt.Errorf("'userColor' が無効です")
-	}
-
 	// スケジュールデータの整理
 	// eventsToStore：Firestoreに保存するための、最終的なきれいなデータを格納する変数
 	eventsToStore := make(map[string][]TimeEntry)
@@ -51,7 +32,7 @@ func transformScheduleData(requestData map[string]interface{}) (string, map[stri
 	// 外側ループ：requestDateからkeyが"spaceId"以外の者をループ処理
 	// key:"2025-06-12"等が、value： [{"start":...}] ような配列が入る
 	for key, value := range requestData {
-		if key == "spaceId" || key == "username" || key == "userColor" {
+		if key == "spaceId" {
 			continue
 		}
 
@@ -63,9 +44,28 @@ func transformScheduleData(requestData map[string]interface{}) (string, map[stri
 
 		var dateEvents []TimeEntry
 		for i, eventInterface := range eventList {
-			eventMap, _ := eventInterface.(map[string]interface{})
-			startStr, _ := eventMap["start"].(string)
-			endStr, _ := eventMap["end"].(string)
+			eventMap, ok := eventInterface.(map[string]interface{})
+			if !ok {
+				return "", nil, fmt.Errorf("キー '%s' の %d 番目のイベントが無効な形式です", key, i)
+			}
+
+			// 必須フィールドの取得
+			startStr, ok := eventMap["start"].(string)
+			if !ok {
+				return "", nil, fmt.Errorf("キー '%s' の %d 番目のイベントの 'start' が無効です", key, i)
+			}
+			endStr, ok := eventMap["end"].(string)
+			if !ok {
+				return "", nil, fmt.Errorf("キー '%s' の %d 番目のイベントの 'end' が無効です", key, i)
+			}
+			username, ok := eventMap["username"].(string)
+			if !ok {
+				return "", nil, fmt.Errorf("キー '%s' の %d 番目のイベントの 'username' が無効です", key, i)
+			}
+			userColor, ok := eventMap["userColor"].(string)
+			if !ok {
+				return "", nil, fmt.Errorf("キー '%s' の %d 番目のイベントの 'userColor' が無効です", key, i)
+			}
 
 			// orderの処理 (orderが存在しない場合、デフォルト値 1 を設定)
 			var orderPtr *int
@@ -82,6 +82,7 @@ func transformScheduleData(requestData map[string]interface{}) (string, map[stri
 			} else {
 				orderPtr = &defaultValue
 			}
+
 			dateEvents = append(dateEvents, TimeEntry{
 				Start:     startStr,
 				End:       endStr,
