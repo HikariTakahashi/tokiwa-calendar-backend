@@ -55,9 +55,32 @@ func getHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// レスポンスデータの構築
+	response := make(map[string]interface{})
+	
+	// イベントデータの処理
+	if events, exists := data["events"]; exists {
+		response["events"] = events
+	} else {
+		// 古い形式のデータの場合（eventsキーがない場合）、データ全体をeventsとして扱う
+		response["events"] = data
+	}
+	
+	// startDateとendDateが存在する場合のみレスポンスに含める
+	if startDate, exists := data["startDate"]; exists && startDate != nil {
+		if startDateStr, isString := startDate.(string); isString && startDateStr != "" {
+			response["startDate"] = startDateStr
+		}
+	}
+	if endDate, exists := data["endDate"]; exists && endDate != nil {
+		if endDateStr, isString := endDate.(string); isString && endDateStr != "" {
+			response["endDate"] = endDateStr
+		}
+	}
+
 	// データをJSONとして返す
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(data); err != nil {
+	if err := json.NewEncoder(w).Encode(response); err != nil {
 		fmt.Println("レスポンスのJSONエンコードに失敗しました:", err)
 	}
 }
