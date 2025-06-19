@@ -13,8 +13,15 @@ type TimeEntry struct {
 	UserColor string `json:"userColor"`
 }
 
+// ScheduleData はスケジュールデータ全体を表す構造体
+type ScheduleData struct {
+	Events   map[string][]TimeEntry `json:"events"`
+	StartDate *string               `json:"startDate,omitempty"`
+	EndDate   *string               `json:"endDate,omitempty"`
+}
+
 // response-post.goで受け取ったPOSTデータを解析・加工する処理
-func transformScheduleData(requestData map[string]interface{}) (string, map[string][]TimeEntry, error) {
+func transformScheduleData(requestData map[string]interface{}) (string, *ScheduleData, error) {
 	// requestDateマップから"spaceID"というキーで値を取得
 	spaceIdInterface, ok := requestData["spaceId"]
 	if !ok {
@@ -29,10 +36,26 @@ func transformScheduleData(requestData map[string]interface{}) (string, map[stri
 	// eventsToStore：Firestoreに保存するための、最終的なきれいなデータを格納する変数
 	eventsToStore := make(map[string][]TimeEntry)
 
-	// 外側ループ：requestDateからkeyが"spaceId"以外の者をループ処理
+	// startDateとendDateの処理
+	var startDate *string
+	var endDate *string
+
+	if startDateVal, exists := requestData["startDate"]; exists {
+		if startDateStr, isString := startDateVal.(string); isString && startDateStr != "" {
+			startDate = &startDateStr
+		}
+	}
+
+	if endDateVal, exists := requestData["endDate"]; exists {
+		if endDateStr, isString := endDateVal.(string); isString && endDateStr != "" {
+			endDate = &endDateStr
+		}
+	}
+
+	// 外側ループ：requestDateからkeyが"spaceId"、"startDate"、"endDate"以外の者をループ処理
 	// key:"2025-06-12"等が、value： [{"start":...}] ような配列が入る
 	for key, value := range requestData {
-		if key == "spaceId" {
+		if key == "spaceId" || key == "startDate" || key == "endDate" {
 			continue
 		}
 
@@ -94,5 +117,17 @@ func transformScheduleData(requestData map[string]interface{}) (string, map[stri
 		eventsToStore[key] = dateEvents
 	}
 
-	return spaceId, eventsToStore, nil
+	scheduleData := &ScheduleData{
+		Events: eventsToStore,
+	}
+	
+	// startDateとendDateが存在する場合のみ追加
+	if startDate != nil {
+		scheduleData.StartDate = startDate
+	}
+	if endDate != nil {
+		scheduleData.EndDate = endDate
+	}
+
+	return spaceId, scheduleData, nil
 }
