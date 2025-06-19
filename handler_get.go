@@ -57,24 +57,35 @@ func getHandler(w http.ResponseWriter, r *http.Request) {
 
 	// レスポンスデータの構築
 	response := make(map[string]interface{})
-	
+
 	// イベントデータの処理
-	if events, exists := data["events"]; exists {
-		response["events"] = events
+	if events, exists := data["Events"]; exists {
+		response["events"] = map[string]interface{}{
+			"Events": events,
+		}
 	} else {
-		// 古い形式のデータの場合（eventsキーがない場合）、データ全体をeventsとして扱う
-		response["events"] = data
+		// 古い形式のデータの場合（Eventsキーがない場合）、データ全体をEventsとして扱う
+		response["events"] = map[string]interface{}{
+			"Events": data,
+		}
 	}
-	
+
 	// startDateとendDateが存在する場合のみレスポンスに含める
-	if startDate, exists := data["startDate"]; exists && startDate != nil {
+	if startDate, exists := data["StartDate"]; exists && startDate != nil {
 		if startDateStr, isString := startDate.(string); isString && startDateStr != "" {
 			response["startDate"] = startDateStr
 		}
 	}
-	if endDate, exists := data["endDate"]; exists && endDate != nil {
+	if endDate, exists := data["EndDate"]; exists && endDate != nil {
 		if endDateStr, isString := endDate.(string); isString && endDateStr != "" {
 			response["endDate"] = endDateStr
+		}
+	}
+
+	// AllowOtherEditが存在する場合のみレスポンスに含める
+	if allowOtherEdit, exists := data["AllowOtherEdit"]; exists {
+		if allowOtherEditBool, isBool := allowOtherEdit.(bool); isBool {
+			response["allowOtherEdit"] = allowOtherEditBool
 		}
 	}
 
