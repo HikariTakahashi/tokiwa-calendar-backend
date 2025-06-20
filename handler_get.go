@@ -60,14 +60,10 @@ func getHandler(w http.ResponseWriter, r *http.Request) {
 
 	// イベントデータの処理
 	if events, exists := data["Events"]; exists {
-		response["events"] = map[string]interface{}{
-			"Events": events,
-		}
+		response["events"] = events
 	} else {
-		// 古い形式のデータの場合（Eventsキーがない場合）、データ全体をEventsとして扱う
-		response["events"] = map[string]interface{}{
-			"Events": data,
-		}
+		// 古い形式のデータの場合（Eventsキーがない場合）、データ全体をeventsとして扱う
+		response["events"] = data
 	}
 
 	// startDateとendDateが存在する場合のみレスポンスに含める
