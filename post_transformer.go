@@ -15,10 +15,10 @@ type TimeEntry struct {
 
 // ScheduleData はスケジュールデータ全体を表す構造体
 type ScheduleData struct {
-	Events         map[string][]TimeEntry `json:"Events"`
-	StartDate      *string                `json:"StartDate,omitempty"`
-	EndDate        *string                `json:"EndDate,omitempty"`
-	AllowOtherEdit bool                   `json:"AllowOtherEdit"`
+	Events         map[string][]TimeEntry `json:"events"`
+	StartDate      *string                `json:"startDate,omitempty"`
+	EndDate        *string                `json:"endDate,omitempty"`
+	AllowOtherEdit bool                   `json:"allowOtherEdit"`
 }
 
 // response-post.goで受け取ったPOSTデータを解析・加工する処理
@@ -41,43 +41,32 @@ func transformScheduleData(requestData map[string]interface{}) (string, *Schedul
 		}
 	}
 
-	// eventsデータの取得
+	// eventsデータの取得（新しい構造では直接オブジェクト）
 	eventsInterface, ok := requestData["events"]
 	if !ok {
 		return "", nil, fmt.Errorf("'events' がリクエストデータに含まれていません")
 	}
 
-	eventsMap, ok := eventsInterface.(map[string]interface{})
+	eventsData, ok := eventsInterface.(map[string]interface{})
 	if !ok {
 		return "", nil, fmt.Errorf("'events' が無効な形式です")
-	}
-
-	// Eventsデータの取得
-	eventsDataInterface, ok := eventsMap["Events"]
-	if !ok {
-		return "", nil, fmt.Errorf("'Events' がeventsデータに含まれていません")
-	}
-
-	eventsData, ok := eventsDataInterface.(map[string]interface{})
-	if !ok {
-		return "", nil, fmt.Errorf("'Events' が無効な形式です")
 	}
 
 	// スケジュールデータの整理
 	// eventsToStore：Firestoreに保存するための、最終的なきれいなデータを格納する変数
 	eventsToStore := make(map[string][]TimeEntry)
 
-	// startDateとendDateの処理（events内から取得）
+	// startDateとendDateの処理（requestDataから直接取得）
 	var startDate *string
 	var endDate *string
 
-	if startDateVal, exists := eventsMap["StartDate"]; exists {
+	if startDateVal, exists := requestData["StartDate"]; exists {
 		if startDateStr, isString := startDateVal.(string); isString && startDateStr != "" {
 			startDate = &startDateStr
 		}
 	}
 
-	if endDateVal, exists := eventsMap["EndDate"]; exists {
+	if endDateVal, exists := requestData["EndDate"]; exists {
 		if endDateStr, isString := endDateVal.(string); isString && endDateStr != "" {
 			endDate = &endDateStr
 		}
