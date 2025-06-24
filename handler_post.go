@@ -34,24 +34,24 @@ func postHandler(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
 	// 受け取ったPOSTデータを解析・加工する処理を呼び出す
-	spaceId, eventsToStore, err := transformScheduleData(requestData)
+	spaceId, scheduleData, err := transformScheduleData(requestData)
 	if err != nil {
 		http.Error(w, "データ形式の解析に失敗しました: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	// 保存する有効なイベントがなかった場合のレスポンス
-	if len(eventsToStore) == 0 {
+	if len(scheduleData.Events) == 0 {
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]string{
-			"message": "有効なカレンダーイベントデータが見つかりませんでした。",
-			"spaceId": spaceId,
-		})
+		// ScheduleData構造体を直接JSONシリアライゼーション
+		if err := json.NewEncoder(w).Encode(scheduleData); err != nil {
+			fmt.Println("レスポンスのJSONエンコードに失敗しました:", err)
+		}
 		return
 	}
 
 	// DBに保存する処理を呼び出す
-	if err := saveScheduleToFirestore(r.Context(), spaceId, eventsToStore); err != nil {
+	if err := saveScheduleToFirestore(r.Context(), spaceId, scheduleData); err != nil {
 		http.Error(w, "データの処理または保存に失敗しました: "+err.Error(), http.StatusInternalServerError)
 		fmt.Printf("処理エラー: %v\n", err)
 		return
@@ -60,12 +60,9 @@ func postHandler(w http.ResponseWriter, r *http.Request) {
 	// 成功した場合のレスポンス
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	response := map[string]interface{}{
-		"message":     "データは正常に受信され、Firestoreに保存されました。",
-		"spaceId":     spaceId,
-		"savedEvents": eventsToStore,
-	}
-	if err := json.NewEncoder(w).Encode(response); err != nil {
+	
+	// ScheduleData構造体を直接JSONシリアライゼーション
+	if err := json.NewEncoder(w).Encode(scheduleData); err != nil {
 		fmt.Println("レスポンスのJSONエンコードに失敗しました:", err)
 	}
 	fmt.Printf("データがFirestoreに正常に保存されました。Document ID: %s\n", spaceId)
