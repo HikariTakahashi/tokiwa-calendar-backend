@@ -1,5 +1,3 @@
-// main.go (クリーンな状態)
-
 //go:build local
 
 package main

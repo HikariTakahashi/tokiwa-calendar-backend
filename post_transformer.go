@@ -1,10 +1,13 @@
+// post_transfer.go (修正後)
+
 package main
 
 import (
 	"fmt"
 )
 
-// TimeEntry は各イベントの開始時刻、終了時刻、順序を格納する構造体
+// TimeEntry 構造体は、JSONリクエストの各イベントオブジェクトに対応します。
+// タグはjsonのままにしておきます。
 type TimeEntry struct {
 	Start     string `json:"start"`
 	End       string `json:"end"`
@@ -13,9 +16,21 @@ type TimeEntry struct {
 	UserColor string `json:"userColor"`
 }
 
+// ★★★ 変更点 ★★★
+// Firestoreに保存するドキュメント全体の構造を定義します。
+// firestoreタグを使うことで、Firestore上でのフィールド名を明示できます。
+type ScheduleDocument struct {
+	AllowOtherEdit bool                   `firestore:"allowOtherEdit"`
+	StartDate      string                 `firestore:"startDate"`
+	EndDate        string                 `firestore:"endDate"`
+	Events         map[string][]TimeEntry `firestore:"events"`
+}
+
+// ★★★ 変更点 ★★★
 // response-post.goで受け取ったPOSTデータを解析・加工する処理
-func transformScheduleData(requestData map[string]interface{}) (string, map[string][]TimeEntry, error) {
-	// requestDateマップから"spaceID"というキーで値を取得
+// 戻り値を、新しい ScheduleDocument 構造体のポインタに変更します。
+func transformScheduleData(requestData map[string]interface{}) (string, *ScheduleDocument, error) {
+	// spaceIdの取得は変更なし
 	spaceIdInterface, ok := requestData["spaceId"]
 	if !ok {
 		return "", nil, fmt.Errorf("'spaceId' がリクエストデータに含まれていません")
@@ -25,49 +40,51 @@ func transformScheduleData(requestData map[string]interface{}) (string, map[stri
 		return "", nil, fmt.Errorf("'spaceId' が無効です")
 	}
 
-	// usernameとuserColorの取得
-	usernameInterface, ok := requestData["username"]
+	// ★★★ 追加: 新しいメタデータを取得 ★★★
+	allowEdit, _ := requestData["allowOtherEdit"].(bool) // 存在しない場合はfalseになる
+	startDate, ok := requestData["startDate"].(string)
 	if !ok {
-		return "", nil, fmt.Errorf("'username' がリクエストデータに含まれていません")
+		return "", nil, fmt.Errorf("'startDate' がリクエストデータに含まれていません")
 	}
-	username, ok := usernameInterface.(string)
-	if !ok || username == "" {
-		return "", nil, fmt.Errorf("'username' が無効です")
+	endDate, ok := requestData["endDate"].(string)
+	if !ok {
+		return "", nil, fmt.Errorf("'endDate' がリクエストデータに含まれていません")
 	}
 
-	userColorInterface, ok := requestData["userColor"]
+	// ★★★ 変更点: "events" オブジェクトを取得 ★★★
+	eventsInterface, ok := requestData["events"]
 	if !ok {
-		return "", nil, fmt.Errorf("'userColor' がリクエストデータに含まれていません")
+		// eventsが無くても、メタデータ更新として許容する場合はこのエラーチェックを外す
+		return "", nil, fmt.Errorf("'events' がリクエストデータに含まれていません")
 	}
-	userColor, ok := userColorInterface.(string)
-	if !ok || userColor == "" {
-		return "", nil, fmt.Errorf("'userColor' が無効です")
+	eventsMap, ok := eventsInterface.(map[string]interface{})
+	if !ok {
+		return "", nil, fmt.Errorf("'events' の形式が不正です")
 	}
 
 	// スケジュールデータの整理
-	// eventsToStore：Firestoreに保存するための、最終的なきれいなデータを格納する変数
 	eventsToStore := make(map[string][]TimeEntry)
 
-	// 外側ループ：requestDateからkeyが"spaceId"以外の者をループ処理
-	// key:"2025-06-12"等が、value： [{"start":...}] ような配列が入る
-	for key, value := range requestData {
-		if key == "spaceId" || key == "username" || key == "userColor" {
-			continue
-		}
-
-		// valueをinterface{}型から[]interface{}型に変換
+	// eventsMapの中をループ処理する
+	for key, value := range eventsMap {
 		eventList, ok := value.([]interface{})
 		if !ok {
 			return "", nil, fmt.Errorf("キー '%s' の値がイベントの配列ではありません", key)
 		}
 
 		var dateEvents []TimeEntry
+		// ここのループは以前のロジックとほぼ同じ
 		for i, eventInterface := range eventList {
-			eventMap, _ := eventInterface.(map[string]interface{})
+			eventMap, ok := eventInterface.(map[string]interface{})
+			if !ok {
+				return "", nil, fmt.Errorf("キー '%s' の %d 番目のイベントデータ形式が不正です", key, i)
+			}
+			
 			startStr, _ := eventMap["start"].(string)
 			endStr, _ := eventMap["end"].(string)
+			username, _ := eventMap["username"].(string)
+			userColor, _ := eventMap["userColor"].(string)
 
-			// orderの処理 (orderが存在しない場合、デフォルト値 1 を設定)
 			var orderPtr *int
 			defaultValue := 1
 			if orderVal, exists := eventMap["order"]; exists {
@@ -76,12 +93,11 @@ func transformScheduleData(requestData map[string]interface{}) (string, map[stri
 					orderPtr = &val
 				} else if orderInt, isInt := orderVal.(int); isInt {
 					orderPtr = &orderInt
-				} else {
-					return "", nil, fmt.Errorf("キー '%s' の %d 番目のイベントの 'order' が無効な形式です", key, i)
 				}
 			} else {
 				orderPtr = &defaultValue
 			}
+			
 			dateEvents = append(dateEvents, TimeEntry{
 				Start:     startStr,
 				End:       endStr,
@@ -93,5 +109,13 @@ func transformScheduleData(requestData map[string]interface{}) (string, map[stri
 		eventsToStore[key] = dateEvents
 	}
 
-	return spaceId, eventsToStore, nil
+	// ★★★ 変更点: 最終的なドキュメント構造を作成 ★★★
+	scheduleDoc := &ScheduleDocument{
+		AllowOtherEdit: allowEdit,
+		StartDate:      startDate,
+		EndDate:        endDate,
+		Events:         eventsToStore,
+	}
+
+	return spaceId, scheduleDoc, nil
 }

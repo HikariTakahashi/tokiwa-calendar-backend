@@ -1,0 +1,14 @@
+{
+  "workbench.colorTheme": "Default Dark+",
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.formatOnPaste": true,
+  "editor.formatOnSave": true,
+  "editor.formatOnType": true,
+  "liveServer.settings.donotShowInfoMsg": true,
+  "git.autofetch": true,
+  "go.toolsManagement.autoUpdate": true,
+  "settings.discordId": "1226827598961705011",
+  "gopls": {
+    "build.buildFlags": ["-tags=local"]
+  }
+}
