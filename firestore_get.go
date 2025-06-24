@@ -11,7 +11,7 @@ import (
 // データベースの特定の情報をフロントに返す処理
 func getScheduleFromFirestore(ctx context.Context, spaceId string) (map[string]interface{}, error) {
 	// Firestoreからデータを取得
-	docRef := client.Collection("schedules").Doc(spaceId)
+	docRef := client.Collection(firestoreCollectionName).Doc(spaceId)
 	doc, err := docRef.Get(ctx)
 	if err != nil {
 		// データが見つからないエラーの場合、データなし(nil)とエラーなしを返してハンドラ側で404を処理させる
