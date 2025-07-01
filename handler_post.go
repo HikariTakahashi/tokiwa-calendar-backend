@@ -34,6 +34,12 @@ func processPostRequest(ctx context.Context, req interface{}) (map[string]interf
 		return map[string]interface{}{"error": "データ形式の解析に失敗しました: " + err.Error()}, http.StatusBadRequest
 	}
 
+	// コンテキストからUIDを取得し、存在すればドキュメントにセットする
+	// ミドルウェアにより、ログインユーザーの場合のみUIDがセットされている
+	if uid, ok := getUIDFromContext(ctx); ok {
+		scheduleDoc.OwnerUID = uid
+	}
+
 	if err := saveScheduleToFirestore(ctx, spaceId, scheduleDoc); err != nil {
 		fmt.Printf("処理エラー: %v\n", err)
 		return map[string]interface{}{"error": "データの処理または保存に失敗しました: " + err.Error()}, http.StatusInternalServerError
