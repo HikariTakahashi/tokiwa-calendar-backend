@@ -8,7 +8,6 @@ import (
 	"time"
 )
 
-// ★★★ 変更点 ★★★
 // Firestoreに保存する際のキー名を小文字にするため、`firestore`タグを追加
 type TimeEntry struct {
 	Start     string `json:"start"     firestore:"start"`
@@ -18,9 +17,9 @@ type TimeEntry struct {
 	UserColor string `json:"userColor" firestore:"userColor"`
 }
 
-// ★★★ 変更点 ★★★
 // StartDateとEndDateをポインタ型(*string)にし、omitemptyタグを追加
 type ScheduleDocument struct {
+	OwnerUID       string                 `firestore:"ownerUid,omitempty"`
 	AllowOtherEdit bool                   `firestore:"allowOtherEdit"`
 	StartDate      *string                `firestore:"startDate,omitempty"`
 	EndDate        *string                `firestore:"endDate,omitempty"`
