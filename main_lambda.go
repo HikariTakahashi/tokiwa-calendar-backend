@@ -27,13 +27,31 @@ func handler(ctx context.Context, request events.APIGatewayV2HTTPRequest) (event
 	// 正しい型になったので、シンプルな判定に戻します
 	switch request.RequestContext.HTTP.Method {
 	case "POST":
-		if request.RequestContext.HTTP.Path == "/api/time" {
-			// events.APIGatewayProxyRequest 型に変換して渡す
-			// (processPostRequestがこの型を期待しているため)
+		// パスが `/api/time` または `/api/time/` の場合にマッチ
+		if strings.TrimSuffix(request.RequestContext.HTTP.Path, "/") == "/api/time" {
+			// --- Lambda環境での認証処理を追加 ---
+			authHeader := request.Headers["authorization"] // Lambdaのヘッダーキーは小文字
+			newCtx := ctx                                  // 元のコンテキストを保持
+
+			if authHeader != "" {
+				parts := strings.Split(authHeader, " ")
+				if len(parts) == 2 && strings.ToLower(parts[0]) == "bearer" {
+					idToken := parts[1]
+					token, err := authClient.VerifyIDToken(ctx, idToken)
+					if err != nil {
+						log.Printf("WARN: Lambda - Failed to verify ID token, proceeding as anonymous: %v\n", err)
+					} else {
+						log.Printf("INFO: Lambda - Authenticated user: %s", token.UID)
+						newCtx = setUIDInContext(ctx, token.UID)
+					}
+				} else {
+					log.Println("WARN: Lambda - Authorization header format is invalid, proceeding as anonymous.")
+				}
+			}
 			proxyReq := events.APIGatewayProxyRequest{
 				Body: request.Body,
 			}
-			responseData, statusCode = processPostRequest(ctx, proxyReq)
+			responseData, statusCode = processPostRequest(newCtx, proxyReq)
 		}
 	case "GET":
 		// パス `/api/time/{spaceId}` にマッチするかどうかを判定

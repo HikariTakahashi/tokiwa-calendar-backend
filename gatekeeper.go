@@ -1,17 +1,10 @@
 package main
 
 import (
-	"context"
 	"log"
 	"net/http"
 	"strings"
 )
-
-// userContextKey はコンテキスト内でユーザーIDを格納するためのキーです。
-// 文字列リテラルを直接使うのを避け、型安全性を高めるためのテクニックです。
-type userContextKey string
-
-const uidContextKey = userContextKey("uid")
 
 // optionalAuthMiddleware はHTTPリクエストを"オプショナル"で認証するミドルウェアです。
 func optionalAuthMiddleware(next http.Handler) http.Handler {
@@ -40,13 +33,7 @@ func optionalAuthMiddleware(next http.Handler) http.Handler {
 		}
 
 		// 検証成功: コンテキストにUIDを保存して次のハンドラを呼び出す
-		ctx := context.WithValue(r.Context(), uidContextKey, token.UID)
+		ctx := setUIDInContext(r.Context(), token.UID)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
-}
-
-// getUIDFromContext はコンテキストからUIDを取得します。後のステップで使います。
-func getUIDFromContext(ctx context.Context) (string, bool) {
-	uid, ok := ctx.Value(uidContextKey).(string)
-	return uid, ok
 }
