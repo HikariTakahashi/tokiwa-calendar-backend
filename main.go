@@ -64,7 +64,12 @@ func main() {
 	
 	apiHandler := http.HandlerFunc(apiRouter)
 	signupHandler := http.HandlerFunc(handleSignupRequest)
-	loginHandler := http.HandlerFunc(handleLoginRequest)
+	loginHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		response, statusCode := processLoginRequest(r.Context(), r)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(statusCode)
+		json.NewEncoder(w).Encode(response)
+	})
 
 	// CORSミドルウェアでapiHandlerをラップし、/api/time/ パスに登録
 	http.Handle("/api/time/", corsMiddleware(apiHandler))
