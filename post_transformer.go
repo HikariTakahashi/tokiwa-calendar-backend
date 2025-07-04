@@ -5,7 +5,6 @@ package main
 // SchedulePostRequest は、POSTリクエストのJSONボディの構造を定義します。
 // これにより、型安全なデコードが可能になります。
 type SchedulePostRequest struct {
-	SpaceID        string                 `json:"spaceId"`
 	AllowOtherEdit bool                   `json:"allowOtherEdit"`
 	StartDate      *string                `json:"startDate,omitempty"`
 	EndDate        *string                `json:"endDate,omitempty"`

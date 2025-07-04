@@ -37,11 +37,6 @@ func processPostRequest(ctx context.Context, req interface{}) (map[string]interf
 		return map[string]interface{}{"error": "JSONの解析に失敗しました: " + err.Error()}, http.StatusBadRequest
 	}
 
-	// バリデーション
-	if postData.SpaceID == "" {
-		return map[string]interface{}{"error": "'spaceId' がリクエストデータに含まれていないか、空です"}, http.StatusBadRequest
-	}
-
 	// Events内の各TimeEntryでOrderが指定されていない場合にデフォルト値を設定
 	defaultValue := 1
 	if postData.Events != nil {
@@ -53,6 +48,9 @@ func processPostRequest(ctx context.Context, req interface{}) (map[string]interf
 			}
 		}
 	}
+
+	// Firestoreで新しいドキュメントID（spaceId）を自動生成
+	newSpaceId := firestoreClient.Collection(firestoreCollectionName).NewDoc().ID
 
 	// Firestoreに保存するドキュメントを作成
 	scheduleDoc := &ScheduleDocument{
@@ -68,16 +66,16 @@ func processPostRequest(ctx context.Context, req interface{}) (map[string]interf
 		scheduleDoc.OwnerUID = uid
 	}
 
-	if err := saveScheduleToFirestore(ctx, postData.SpaceID, scheduleDoc); err != nil {
+	if err := saveScheduleToFirestore(ctx, newSpaceId, scheduleDoc); err != nil {
 		fmt.Printf("Firestoreへの保存エラー: %v\n", err)
 		return map[string]interface{}{"error": "データの保存に失敗しました: " + err.Error()}, http.StatusInternalServerError
 	}
 
-	fmt.Printf("データがFirestoreに正常に保存されました。Document ID: %s\n", postData.SpaceID)
+	fmt.Printf("データがFirestoreに正常に保存されました。Document ID: %s\n", newSpaceId)
 
 	return map[string]interface{}{
 		"message":   "データは正常に受信され、Firestoreに保存されました。",
-		"spaceId":   postData.SpaceID,
+		"spaceId":   newSpaceId,
 		"savedData": scheduleDoc,
 	}, http.StatusOK
 }
