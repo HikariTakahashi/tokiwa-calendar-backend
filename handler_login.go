@@ -44,7 +44,7 @@ func getFirebaseAPIKey() string {
 func verifyPasswordWithFirebase(email, password string) (map[string]interface{}, error) {
 	apiKey := getFirebaseAPIKey()
 	if apiKey == "" {
-		return nil, fmt.Errorf("Firebase APIキーが設定されていません")
+		return nil, fmt.Errorf("firebase APIキーが設定されていません")
 	}
 	
 	url := "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=" + apiKey
@@ -64,7 +64,7 @@ func verifyPasswordWithFirebase(email, password string) (map[string]interface{},
 	// Firebase Auth REST APIにリクエストを送信
 	resp, err := http.Post(url, "application/json", strings.NewReader(string(authRequestJSON)))
 	if err != nil {
-		return nil, fmt.Errorf("Firebase Auth APIリクエストエラー: %v", err)
+		return nil, fmt.Errorf("firebase auth APIリクエストエラー: %v", err)
 	}
 	defer resp.Body.Close()
 	
