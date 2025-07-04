@@ -12,6 +12,7 @@ import (
 	// ★★★【最重要変更点】★★★ 使用するイベントの型をV2に変更します
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
+	"github.com/joho/godotenv"
 )
 
 // ★★★【最重要変更点】★★★
@@ -27,8 +28,14 @@ func handler(ctx context.Context, request events.APIGatewayV2HTTPRequest) (event
 	// 正しい型になったので、シンプルな判定に戻します
 	switch request.RequestContext.HTTP.Method {
 	case "POST":
+		// パスが `/api/signup` の場合
+		if strings.TrimSuffix(request.RequestContext.HTTP.Path, "/") == "/api/signup" {
+			responseData, statusCode = processSignupRequest(ctx, request)
+		} else if strings.TrimSuffix(request.RequestContext.HTTP.Path, "/") == "/api/login" {
+		// パスが `/api/login` の場合
+			responseData, statusCode = processLoginRequest(ctx, request)
+		} else if strings.TrimSuffix(request.RequestContext.HTTP.Path, "/") == "/api/time" {
 		// パスが `/api/time` または `/api/time/` の場合にマッチ
-		if strings.TrimSuffix(request.RequestContext.HTTP.Path, "/") == "/api/time" {
 			// --- Lambda環境での認証処理を追加 ---
 			authHeader := request.Headers["authorization"] // Lambdaのヘッダーキーは小文字
 			newCtx := ctx                                  // 元のコンテキストを保持
@@ -97,5 +104,10 @@ func handler(ctx context.Context, request events.APIGatewayV2HTTPRequest) (event
 }
 
 func main() {
+	// 環境変数ファイルを読み込み
+	if err := godotenv.Load(); err != nil {
+		log.Println("Warning: .env file not found, using system environment variables")
+	}
+	
 	lambda.Start(handler)
 }
