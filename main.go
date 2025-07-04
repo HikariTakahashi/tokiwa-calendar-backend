@@ -4,60 +4,62 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"strings"
 )
 
-func main() {
-	// POST /api/time
-	http.HandleFunc("/api/time", func(w http.ResponseWriter, r *http.Request) {
-		// CORSプリフライトリクエストに対応
-		if r.Method == http.MethodOptions {
-			setCORS(w)
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-		setCORS(w) // 通常のリクエストにもCORSヘッダーを設定
-
-		// 共通のロジックを呼び出す
-		response, statusCode := processPostRequest(r.Context(), r)
-
-		// 結果をHTTPレスポンスとして返す
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(statusCode)
-		json.NewEncoder(w).Encode(response)
-	})
-
-	// GET /api/time/{spaceId}
-	http.HandleFunc("/api/time/", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodOptions {
-			setCORS(w)
-			w.WriteHeader(http.StatusOK)
-			return
-		}
+// corsMiddleware は、CORSヘッダーを設定し、OPTIONSリクエストを処理するミドルウェアです。
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		setCORS(w)
-
-		parts := strings.Split(r.URL.Path, "/")
-		if len(parts) < 4 || parts[3] == "" {
-			http.Error(w, "Invalid URL: spaceId is missing", http.StatusBadRequest)
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
 			return
 		}
-		spaceId := parts[3]
+		next.ServeHTTP(w, r)
+	})
+}
 
-		// 共通のロジックを呼び出す
+// handlePostRequest はPOSTリクエストを処理するハンドラです。
+// この関数は、ミドルウェアによってラップされて呼び出されます。
+func handlePostRequest(w http.ResponseWriter, r *http.Request) {
+	response, statusCode := processPostRequest(r.Context(), r)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	json.NewEncoder(w).Encode(response)
+}
+
+// apiRouter は、HTTPメソッドに基づいてリクエストを適切なハンドラに振り分けるルーターです。
+func apiRouter(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		// GETリクエストの処理: /api/time/{spaceId}
+		spaceId := strings.TrimPrefix(r.URL.Path, "/api/time/")
+		if spaceId == "" {
+			http.Error(w, "spaceId is missing in the URL path", http.StatusBadRequest)
+			return
+		}
 		response, statusCode := processGetRequest(r.Context(), spaceId)
-
-		// 結果をHTTPレスポンスとして返す
 		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
-		w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
 		w.WriteHeader(statusCode)
 		json.NewEncoder(w).Encode(response)
-	})
 
-	fmt.Println("Starting local server on :8080...")
+	case http.MethodPost:
+		// POSTリクエストの処理: /api/time
+		optionalAuthMiddleware(http.HandlerFunc(handlePostRequest)).ServeHTTP(w, r)
+
+	default:
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func main() {
+	apiHandler := http.HandlerFunc(apiRouter)
+
+	// CORSミドルウェアでapiHandlerをラップし、/api/time/ パスに登録
+	http.Handle("/api/time/", corsMiddleware(apiHandler))
+
+	log.Println("Starting local server on :8080...")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
