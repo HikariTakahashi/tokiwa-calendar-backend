@@ -7,6 +7,8 @@ import (
 	"log"
 	"net/http"
 	"strings"
+
+	"github.com/joho/godotenv"
 )
 
 // corsMiddleware は、CORSヘッダーを設定し、OPTIONSリクエストを処理するミドルウェアです。
@@ -55,10 +57,23 @@ func apiRouter(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	// 環境変数ファイルを読み込み
+	if err := godotenv.Load(); err != nil {
+		log.Println("Warning: .env file not found, using system environment variables")
+	}
+	
 	apiHandler := http.HandlerFunc(apiRouter)
+	signupHandler := http.HandlerFunc(handleSignupRequest)
+	loginHandler := http.HandlerFunc(handleLoginRequest)
 
 	// CORSミドルウェアでapiHandlerをラップし、/api/time/ パスに登録
 	http.Handle("/api/time/", corsMiddleware(apiHandler))
+	
+	// サインアップ用のエンドポイントを追加
+	http.Handle("/api/signup", corsMiddleware(signupHandler))
+	
+	// ログイン用のエンドポイントを追加
+	http.Handle("/api/login", corsMiddleware(loginHandler))
 
 	log.Println("Starting local server on :8080...")
 	log.Fatal(http.ListenAndServe(":8080", nil))
