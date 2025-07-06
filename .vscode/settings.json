@@ -1,0 +1,21 @@
+{
+  // プロジェクト固有の設定: goplsがビルドタグを正しく認識できるようにします。
+  "gopls": {
+    "build.buildFlags": ["-tags=local"]
+  },
+
+  // Go言語ファイルに限定したエディタ設定
+  "[go]": {
+    // Goファイルには、Go拡張機能のフォーマッターを使用します。
+    "editor.defaultFormatter": "golang.go",
+    // Go開発では、保存時の自動フォーマットが強く推奨されます。
+    "editor.formatOnSave": true,
+    // 保存時に `goimports` を実行し、import文を自動で整理します。
+    "editor.codeActionsOnSave": {
+      "source.organizeImports": "explicit"
+    }
+  },
+
+  // Goモジュールを使用する際の推奨設定
+  "go.useLanguageServer": true
+}
