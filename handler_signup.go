@@ -63,12 +63,8 @@ func processSignupRequest(ctx context.Context, req interface{}) (map[string]inte
 		return map[string]interface{}{"error": "パスワードが入力されていません"}, http.StatusBadRequest
 	}
 
-	// 暗号化されたパスワードを復号化
-	decryptedPassword, err := DecryptPassword(signupData.Password)
-	if err != nil {
-		log.Printf("WARN: Failed to decrypt password during signup for email=%s: %v\n", signupData.Email, err)
-		return map[string]interface{}{"error": "リクエストの処理中にエラーが発生しました。"}, http.StatusBadRequest
-	}
+	// ★修正点: クライアントから送られてきたパスワードをそのまま使用します
+	password := signupData.Password
 
 	// メールアドレスの前処理と検証
 	cleanEmail := strings.TrimSpace(strings.ToLower(signupData.Email))
@@ -84,7 +80,7 @@ func processSignupRequest(ctx context.Context, req interface{}) (map[string]inte
 	}
 
 	// パスワード強度チェック
-	passwordStrength := checkPasswordStrength(decryptedPassword)
+	passwordStrength := checkPasswordStrength(password)
 	if !passwordStrength.IsValid {
 		errorMessage := "パスワードの強度が不足しています: " + strings.Join(passwordStrength.Errors, ", ")
 		return map[string]interface{}{"error": errorMessage}, http.StatusBadRequest
@@ -93,7 +89,7 @@ func processSignupRequest(ctx context.Context, req interface{}) (map[string]inte
 	// Firebase Authenticationでユーザーを作成
 	params := (&auth.UserToCreate{}).
 		Email(cleanEmail).
-		Password(decryptedPassword).
+		Password(password).
 		EmailVerified(false)
 
 	userRecord, err := authClient.CreateUser(ctx, params)

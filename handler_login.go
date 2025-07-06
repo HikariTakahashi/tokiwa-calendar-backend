@@ -116,13 +116,8 @@ func processLoginRequest(ctx context.Context, req interface{}) (map[string]inter
 		return map[string]interface{}{"error": "パスワードが入力されていません"}, http.StatusBadRequest
 	}
 
-	// 暗号化されたパスワードを復号化
-	decryptedPassword, err := DecryptPassword(loginData.Password)
-	if err != nil {
-		log.Printf("WARN: Failed to decrypt password for email=%s: %v\n", loginData.Email, err)
-		// クライアントには一般的なエラーを返す
-		return map[string]interface{}{"error": "メールアドレスまたはパスワードが正しくありません"}, http.StatusUnauthorized
-	}
+	// ★修正点: クライアントから送られてきたパスワードをそのまま使用します
+	password := loginData.Password
 
 	// メールアドレスの前処理と検証
 	cleanEmail := strings.TrimSpace(strings.ToLower(loginData.Email))
@@ -139,7 +134,7 @@ func processLoginRequest(ctx context.Context, req interface{}) (map[string]inter
 	// Firebase Auth REST APIを使用してパスワード認証を実行
 	log.Printf("INFO: Verifying password with Firebase Auth for email=%s\n", cleanEmail)
 
-	authResponse, err := verifyPasswordWithFirebase(cleanEmail, decryptedPassword)
+	authResponse, err := verifyPasswordWithFirebase(cleanEmail, password)
 	if err != nil {
 		log.Printf("ERROR: Firebase auth API request failed: %v\n", err)
 		return map[string]interface{}{"error": "認証サービスへの接続に失敗しました"}, http.StatusInternalServerError
