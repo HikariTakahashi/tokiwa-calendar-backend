@@ -5,8 +5,8 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
+	"log"
 	"net/http"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -21,19 +21,21 @@ func processPostRequest(ctx context.Context, req interface{}) (map[string]interf
 	case *http.Request:
 		bodyBytes, err = io.ReadAll(r.Body)
 		if err != nil {
-			fmt.Printf("リクエストボディの読み取りに失敗: %v\n", err)
+			log.Printf("ERROR: Failed to read request body: %v\n", err)
 			return map[string]interface{}{"error": "リクエストの処理に失敗しました"}, http.StatusInternalServerError
 		}
 		defer r.Body.Close()
 	case events.APIGatewayProxyRequest:
 		bodyBytes = []byte(r.Body)
 	default:
+		log.Printf("ERROR: Unknown request type: %T\n", req)
 		return map[string]interface{}{"error": "不明なリクエストタイプです"}, http.StatusInternalServerError
 	}
 
 	// JSONを構造体にデコード
 	var postData SchedulePostRequest
 	if err := json.Unmarshal(bodyBytes, &postData); err != nil {
+		log.Printf("WARN: Failed to parse JSON: %v\n", err)
 		return map[string]interface{}{"error": "JSONの解析に失敗しました: " + err.Error()}, http.StatusBadRequest
 	}
 
@@ -64,14 +66,17 @@ func processPostRequest(ctx context.Context, req interface{}) (map[string]interf
 	// ミドルウェアにより、ログインユーザーの場合のみUIDがセットされている
 	if uid, ok := getUIDFromContext(ctx); ok {
 		scheduleDoc.OwnerUID = uid
+		log.Printf("INFO: Associating new spaceId %s with owner UID %s\n", newSpaceId, uid)
+	} else {
+		log.Printf("INFO: Creating new spaceId %s for anonymous user.\n", newSpaceId)
 	}
 
 	if err := saveScheduleToFirestore(ctx, newSpaceId, scheduleDoc); err != nil {
-		fmt.Printf("Firestoreへの保存エラー: %v\n", err)
+		log.Printf("ERROR: Failed to save to Firestore: %v\n", err)
 		return map[string]interface{}{"error": "データの保存に失敗しました: " + err.Error()}, http.StatusInternalServerError
 	}
 
-	fmt.Printf("データがFirestoreに正常に保存されました。Document ID: %s\n", newSpaceId)
+	log.Printf("INFO: Data successfully saved to Firestore. Document ID: %s\n", newSpaceId)
 
 	return map[string]interface{}{
 		"message":   "データは正常に受信され、Firestoreに保存されました。",
