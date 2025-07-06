@@ -35,8 +35,8 @@ func processPostRequest(ctx context.Context, req interface{}) (map[string]interf
 	// JSONを構造体にデコード
 	var postData SchedulePostRequest
 	if err := json.Unmarshal(bodyBytes, &postData); err != nil {
-		log.Printf("WARN: Failed to parse JSON: %v\n", err)
-		return map[string]interface{}{"error": "JSONの解析に失敗しました: " + err.Error()}, http.StatusBadRequest
+		log.Printf("WARN: Failed to parse JSON: %v. Body: %s", err, string(bodyBytes))
+		return map[string]interface{}{"error": "リクエストされたJSONの形式が正しくありません。"}, http.StatusBadRequest
 	}
 
 	// Events内の各TimeEntryでOrderが指定されていない場合にデフォルト値を設定
@@ -81,6 +81,5 @@ func processPostRequest(ctx context.Context, req interface{}) (map[string]interf
 	return map[string]interface{}{
 		"message":   "データは正常に受信され、Firestoreに保存されました。",
 		"spaceId":   newSpaceId,
-		"savedData": scheduleDoc,
 	}, http.StatusOK
 }
