@@ -8,7 +8,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
-	"strings"
 )
 
 // getEncryptionKey は環境変数から暗号化キーを取得します
@@ -21,27 +20,46 @@ func getEncryptionKey() string {
 	return key
 }
 
-// DecryptPassword は暗号化されたパスワードを復号化します（簡易版）
+// DecryptPassword はAES-CBCで暗号化されたパスワードを復号化します
 func DecryptPassword(encryptedPassword string) (string, error) {
+	key := []byte(getEncryptionKey())
+	if len(key) > 16 {
+		key = key[:16]
+	} else if len(key) < 16 {
+		return "", fmt.Errorf("暗号化キーは16バイト以上である必要があります")
+	}
+
 	// Base64デコード
-	decoded, err := base64.StdEncoding.DecodeString(encryptedPassword)
+	ciphertext, err := base64.StdEncoding.DecodeString(encryptedPassword)
 	if err != nil {
 		return "", fmt.Errorf("Base64デコードエラー: %v", err)
 	}
 
-	// パスワードとキーを分離
-	parts := strings.Split(string(decoded), ":")
-	if len(parts) != 2 {
-		return "", fmt.Errorf("暗号化データの形式が不正です")
+	if len(ciphertext) < aes.BlockSize {
+		return "", fmt.Errorf("暗号文が短すぎます")
 	}
 
-	// キーの検証（オプション）
-	expectedKey := getEncryptionKey()
-	if parts[1] != expectedKey {
-		return "", fmt.Errorf("暗号化キーが一致しません")
+	// IV（初期化ベクトル）と暗号データを分離
+	iv := ciphertext[:aes.BlockSize]
+	ciphertext = ciphertext[aes.BlockSize:]
+
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", fmt.Errorf("AES暗号作成エラー: %v", err)
 	}
 
-	return parts[0], nil // パスワード部分を返す
+	// CBCモードで復号
+	mode := cipher.NewCBCDecrypter(block, iv)
+	// 復号後のデータは元の暗号文と同じサイズのスライスに書き込まれる
+	mode.CryptBlocks(ciphertext, ciphertext)
+
+	// PKCS7パディングを削除
+	decrypted, err := pkcs7Unpad(ciphertext)
+	if err != nil {
+		return "", fmt.Errorf("パディング解除エラー: %v", err)
+	}
+
+	return string(decrypted), nil
 }
 
 // EncryptPassword はパスワードを暗号化します（テスト用）
@@ -91,3 +109,16 @@ func pkcs7Pad(data []byte, blockSize int) []byte {
 	padtext := bytes.Repeat([]byte{byte(padding)}, padding)
 	return append(data, padtext...)
 } 
+
+// pkcs7Unpad はPKCS7パディングを削除します
+func pkcs7Unpad(data []byte) ([]byte, error) {
+	length := len(data)
+	if length == 0 {
+		return nil, fmt.Errorf("pkcs7: unpadding error - data is empty")
+	}
+	unpadding := int(data[length-1])
+	if unpadding > length || unpadding == 0 {
+		return nil, fmt.Errorf("pkcs7: unpadding error - invalid padding size")
+	}
+	return data[:(length - unpadding)], nil
+}

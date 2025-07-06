@@ -3,8 +3,8 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 
@@ -34,24 +34,26 @@ func processSignupRequest(ctx context.Context, req interface{}) (map[string]inte
 	case *http.Request:
 		bodyBytes, err = io.ReadAll(r.Body)
 		if err != nil {
-			fmt.Printf("リクエストボディの読み取りに失敗: %v\n", err)
+			log.Printf("ERROR: Failed to read request body: %v\n", err)
 			return map[string]interface{}{"error": "リクエストの処理に失敗しました"}, http.StatusInternalServerError
 		}
 		defer r.Body.Close()
 	case events.APIGatewayV2HTTPRequest:
 		bodyBytes = []byte(r.Body)
 	default:
+		log.Printf("ERROR: Unknown request type: %T\n", r)
 		return map[string]interface{}{"error": "不明なリクエストタイプです"}, http.StatusInternalServerError
 	}
 
 	// JSONを構造体にデコード
 	var signupData SignupRequest
 	if err := json.Unmarshal(bodyBytes, &signupData); err != nil {
-		return map[string]interface{}{"error": "JSONの解析に失敗しました: " + err.Error()}, http.StatusBadRequest
+		log.Printf("WARN: Failed to parse signup JSON: %v. Body: %s", err, string(bodyBytes))
+		return map[string]interface{}{"error": "リクエストされたJSONの形式が正しくありません。"}, http.StatusBadRequest
 	}
 
 	// セキュリティログ（パスワードは隠蔽）
-	fmt.Printf("サインアップリクエスト受信: email=%s, encrypted_password=***\n", signupData.Email)
+	log.Printf("INFO: Signup request received for email=%s\n", signupData.Email)
 
 	// バリデーション
 	if signupData.Email == "" {
@@ -62,20 +64,16 @@ func processSignupRequest(ctx context.Context, req interface{}) (map[string]inte
 	}
 
 	// 暗号化されたパスワードを復号化
-	fmt.Printf("復号化対象の暗号化パスワード: %s\n", signupData.Password[:50] + "...")
 	decryptedPassword, err := DecryptPassword(signupData.Password)
 	if err != nil {
-		fmt.Printf("パスワード復号化エラー: %v\n", err)
-		return map[string]interface{}{"error": "パスワードの復号化に失敗しました: " + err.Error()}, http.StatusBadRequest
+		log.Printf("WARN: Failed to decrypt password during signup for email=%s: %v\n", signupData.Email, err)
+		return map[string]interface{}{"error": "リクエストの処理中にエラーが発生しました。"}, http.StatusBadRequest
 	}
-	fmt.Printf("復号化成功: %s\n", decryptedPassword)
-	
+
 	// メールアドレスの前処理と検証
 	cleanEmail := strings.TrimSpace(strings.ToLower(signupData.Email))
-	fmt.Printf("元のメールアドレス: %s\n", signupData.Email)
-	fmt.Printf("処理後のメールアドレス: %s\n", cleanEmail)
-	fmt.Printf("メールアドレス長: %d\n", len(cleanEmail))
-	
+	log.Printf("INFO: Processing signup for clean email: %s\n", cleanEmail)
+
 	if cleanEmail == "" {
 		return map[string]interface{}{"error": "メールアドレスが空です"}, http.StatusBadRequest
 	}
@@ -93,9 +91,6 @@ func processSignupRequest(ctx context.Context, req interface{}) (map[string]inte
 	}
 
 	// Firebase Authenticationでユーザーを作成
-	fmt.Printf("Firebaseに送信するメールアドレス: %s\n", cleanEmail)
-	fmt.Printf("Firebaseに送信するパスワード長: %d\n", len(decryptedPassword))
-	
 	params := (&auth.UserToCreate{}).
 		Email(cleanEmail).
 		Password(decryptedPassword).
@@ -103,28 +98,18 @@ func processSignupRequest(ctx context.Context, req interface{}) (map[string]inte
 
 	userRecord, err := authClient.CreateUser(ctx, params)
 	if err != nil {
-		fmt.Printf("Firebase Authenticationでのユーザー作成エラー: %v\n", err)
-		fmt.Printf("エラーの詳細: %+v\n", err)
-		
-		// Firebaseのエラーメッセージをより詳細に表示
-		fmt.Printf("エラータイプ: %T\n", err)
-		fmt.Printf("エラー文字列: %s\n", err.Error())
-		
-		return map[string]interface{}{"error": "ユーザーの作成に失敗しました: " + err.Error()}, http.StatusInternalServerError
+		log.Printf("ERROR: Failed to create user in Firebase Auth for email=%s: %v\n", cleanEmail, err)
+		// Firebaseからのエラーコードに基づいて、より親切なメッセージを返す
+		if auth.IsEmailAlreadyExists(err) {
+			return map[string]interface{}{"error": "このメールアドレスは既に使用されています。"}, http.StatusConflict
+		}
+		return map[string]interface{}{"error": "ユーザーの作成に失敗しました。"}, http.StatusInternalServerError
 	}
 
-	fmt.Printf("ユーザーが正常に作成されました。UID: %s\n", userRecord.UID)
+	log.Printf("INFO: User successfully created. UID: %s\n", userRecord.UID)
 
 	return map[string]interface{}{
 		"message": "ユーザーが正常に作成されました",
 		"uid":     userRecord.UID,
 	}, http.StatusCreated
 }
-
-// handleSignupRequest はサインアップPOSTリクエストを処理するハンドラです
-func handleSignupRequest(w http.ResponseWriter, r *http.Request) {
-	response, statusCode := processSignupRequest(r.Context(), r)
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
-	json.NewEncoder(w).Encode(response)
-} 

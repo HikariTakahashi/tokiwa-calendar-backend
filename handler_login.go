@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -86,24 +87,26 @@ func processLoginRequest(ctx context.Context, req interface{}) (map[string]inter
 	case *http.Request:
 		bodyBytes, err = io.ReadAll(r.Body)
 		if err != nil {
-			fmt.Printf("リクエストボディの読み取りに失敗: %v\n", err)
+			log.Printf("ERROR: Failed to read request body: %v\n", err)
 			return map[string]interface{}{"error": "リクエストの処理に失敗しました"}, http.StatusInternalServerError
 		}
 		defer r.Body.Close()
 	case events.APIGatewayV2HTTPRequest:
 		bodyBytes = []byte(r.Body)
 	default:
+		log.Printf("ERROR: Unknown request type: %T\n", r)
 		return map[string]interface{}{"error": "不明なリクエストタイプです"}, http.StatusInternalServerError
 	}
 
 	// JSONを構造体にデコード
 	var loginData LoginRequest
 	if err := json.Unmarshal(bodyBytes, &loginData); err != nil {
-		return map[string]interface{}{"error": "JSONの解析に失敗しました: " + err.Error()}, http.StatusBadRequest
+		log.Printf("WARN: Failed to parse login JSON: %v. Body: %s", err, string(bodyBytes))
+		return map[string]interface{}{"error": "リクエストされたJSONの形式が正しくありません。"}, http.StatusBadRequest
 	}
 
 	// セキュリティログ（パスワードは隠蔽）
-	fmt.Printf("ログインリクエスト受信: email=%s, encrypted_password=***\n", loginData.Email)
+	log.Printf("INFO: Login request received for email=%s\n", loginData.Email)
 
 	// バリデーション
 	if loginData.Email == "" {
@@ -114,20 +117,16 @@ func processLoginRequest(ctx context.Context, req interface{}) (map[string]inter
 	}
 
 	// 暗号化されたパスワードを復号化
-	fmt.Printf("復号化対象の暗号化パスワード: %s\n", loginData.Password[:50] + "...")
 	decryptedPassword, err := DecryptPassword(loginData.Password)
 	if err != nil {
-		fmt.Printf("パスワード復号化エラー: %v\n", err)
-		return map[string]interface{}{"error": "パスワードの復号化に失敗しました: " + err.Error()}, http.StatusBadRequest
+		log.Printf("WARN: Failed to decrypt password for email=%s: %v\n", loginData.Email, err)
+		// クライアントには一般的なエラーを返す
+		return map[string]interface{}{"error": "メールアドレスまたはパスワードが正しくありません"}, http.StatusUnauthorized
 	}
-	fmt.Printf("復号化成功: %s\n", decryptedPassword)
-	
+
 	// メールアドレスの前処理と検証
 	cleanEmail := strings.TrimSpace(strings.ToLower(loginData.Email))
-	fmt.Printf("元のメールアドレス: %s\n", loginData.Email)
-	fmt.Printf("処理後のメールアドレス: %s\n", cleanEmail)
-	fmt.Printf("メールアドレス長: %d\n", len(cleanEmail))
-	
+
 	if cleanEmail == "" {
 		return map[string]interface{}{"error": "メールアドレスが空です"}, http.StatusBadRequest
 	}
@@ -138,20 +137,20 @@ func processLoginRequest(ctx context.Context, req interface{}) (map[string]inter
 	}
 
 	// Firebase Auth REST APIを使用してパスワード認証を実行
-	fmt.Printf("Firebase Auth REST APIでパスワード認証を実行: email=%s\n", cleanEmail)
-	
+	log.Printf("INFO: Verifying password with Firebase Auth for email=%s\n", cleanEmail)
+
 	authResponse, err := verifyPasswordWithFirebase(cleanEmail, decryptedPassword)
 	if err != nil {
-		fmt.Printf("Firebase認証エラー: %v\n", err)
-		return map[string]interface{}{"error": "認証サービスへの接続に失敗しました: " + err.Error()}, http.StatusInternalServerError
+		log.Printf("ERROR: Firebase auth API request failed: %v\n", err)
+		return map[string]interface{}{"error": "認証サービスへの接続に失敗しました"}, http.StatusInternalServerError
 	}
-	
+
 	// エラーチェック
 	if authResponse["error"] != nil {
 		errorInfo := authResponse["error"].(map[string]interface{})
 		errorMessage := errorInfo["message"].(string)
-		fmt.Printf("Firebase認証エラー: %s\n", errorMessage)
-		
+		log.Printf("WARN: Firebase auth failed for email=%s. Reason: %s\n", cleanEmail, errorMessage)
+
 		// エラーメッセージを最小限に統一（セキュリティのため）
 		switch errorMessage {
 		case "TOO_MANY_ATTEMPTS_TRY_LATER":
@@ -162,22 +161,20 @@ func processLoginRequest(ctx context.Context, req interface{}) (map[string]inter
 			return map[string]interface{}{"error": "メールアドレスまたはパスワードが正しくありません"}, http.StatusUnauthorized
 		}
 	}
-	
+
 	// 認証成功
 	idToken := authResponse["idToken"].(string)
 	localId := authResponse["localId"].(string)
 	email := authResponse["email"].(string)
-	
-	fmt.Printf("Firebase認証が成功しました。UID: %s\n", localId)
-	
+
+	log.Printf("INFO: Firebase auth successful. UID: %s\n", localId)
+
 	// カスタムトークンを生成（フロントエンドでの認証用）
 	customToken, err := authClient.CustomToken(ctx, localId)
 	if err != nil {
-		fmt.Printf("カスタムトークン生成エラー: %v\n", err)
-		return map[string]interface{}{"error": "認証トークンの生成に失敗しました: " + err.Error()}, http.StatusInternalServerError
+		log.Printf("ERROR: Failed to create custom token for UID %s: %v\n", localId, err)
+		return map[string]interface{}{"error": "認証トークンの生成に失敗しました"}, http.StatusInternalServerError
 	}
-
-	fmt.Printf("カスタムトークンが正常に生成されました\n")
 
 	return map[string]interface{}{
 		"message":     "ログインが成功しました",

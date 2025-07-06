@@ -7,9 +7,14 @@ import (
 	"log"
 	"net/http"
 	"strings"
-
-	"github.com/joho/godotenv"
 )
+
+// setCORS はローカルサーバー用のCORSヘッダーを設定します。
+func setCORS(w http.ResponseWriter) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, DELETE")
+	w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
+}
 
 // corsMiddleware は、CORSヘッダーを設定し、OPTIONSリクエストを処理するミドルウェアです。
 func corsMiddleware(next http.Handler) http.Handler {
@@ -23,8 +28,39 @@ func corsMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// optionalAuthMiddleware はHTTPリクエストを"オプショナル"で認証するミドルウェアです。
+func optionalAuthMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
+			// ヘッダーがなければ、非ログインユーザーとして次の処理へ
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// "Bearer " プレフィックスを検証・削除
+		parts := strings.Split(authHeader, " ")
+		if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+			log.Println("WARN: Authorization header format is invalid, proceeding as anonymous.")
+			next.ServeHTTP(w, r) // フォーマット不正でもエラーにせず、非ログインユーザーとして続行
+			return
+		}
+		idToken := parts[1]
+
+		token, err := authClient.VerifyIDToken(r.Context(), idToken)
+		if err != nil {
+			log.Printf("WARN: Failed to verify ID token, proceeding as anonymous: %v\n", err)
+			next.ServeHTTP(w, r) // トークン検証失敗でもエラーにせず、非ログインユーザーとして続行
+			return
+		}
+
+		// 検証成功: コンテキストにUIDを保存して次のハンドラを呼び出す
+		ctx := setUIDInContext(r.Context(), token.UID)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
 // handlePostRequest はPOSTリクエストを処理するハンドラです。
-// この関数は、ミドルウェアによってラップされて呼び出されます。
 func handlePostRequest(w http.ResponseWriter, r *http.Request) {
 	response, statusCode := processPostRequest(r.Context(), r)
 	w.Header().Set("Content-Type", "application/json")
@@ -32,8 +68,37 @@ func handlePostRequest(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+// handleSignupRequest はサインアップPOSTリクエストを処理するハンドラです
+func handleSignupRequest(w http.ResponseWriter, r *http.Request) {
+	response, statusCode := processSignupRequest(r.Context(), r)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleLoginRequest はログインPOSTリクエストを処理するハンドラです
+func handleLoginRequest(w http.ResponseWriter, r *http.Request) {
+	response, statusCode := processLoginRequest(r.Context(), r)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	json.NewEncoder(w).Encode(response)
+}
+
 // apiRouter は、HTTPメソッドに基づいてリクエストを適切なハンドラに振り分けるルーターです。
 func apiRouter(w http.ResponseWriter, r *http.Request) {
+	// パスに基づいて処理を分岐
+	if strings.HasPrefix(r.URL.Path, "/api/time") {
+		handleTimeRequest(w, r)
+	} else if strings.HasPrefix(r.URL.Path, "/api/signup") {
+		handleSignupRequest(w, r)
+	} else if strings.HasPrefix(r.URL.Path, "/api/login") {
+		handleLoginRequest(w, r)
+	} else {
+		http.NotFound(w, r)
+	}
+}
+
+func handleTimeRequest(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		// GETリクエストの処理: /api/time/{spaceId}
@@ -57,28 +122,10 @@ func apiRouter(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	// 環境変数ファイルを読み込み
-	if err := godotenv.Load(); err != nil {
-		log.Println("Warning: .env file not found, using system environment variables")
-	}
-	
 	apiHandler := http.HandlerFunc(apiRouter)
-	signupHandler := http.HandlerFunc(handleSignupRequest)
-	loginHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response, statusCode := processLoginRequest(r.Context(), r)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(statusCode)
-		json.NewEncoder(w).Encode(response)
-	})
 
-	// CORSミドルウェアでapiHandlerをラップし、/api/time/ パスに登録
-	http.Handle("/api/time/", corsMiddleware(apiHandler))
-	
-	// サインアップ用のエンドポイントを追加
-	http.Handle("/api/signup", corsMiddleware(signupHandler))
-	
-	// ログイン用のエンドポイントを追加
-	http.Handle("/api/login", corsMiddleware(loginHandler))
+	// CORSミドルウェアでapiHandlerをラップし、/api/ パス以下すべてに登録
+	http.Handle("/api/", corsMiddleware(apiHandler))
 
 	log.Println("Starting local server on :8080...")
 	log.Fatal(http.ListenAndServe(":8080", nil))

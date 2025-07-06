@@ -25,45 +25,36 @@ func handler(ctx context.Context, request events.APIGatewayV2HTTPRequest) (event
 	var responseData map[string]interface{}
 	var statusCode int
 
-	// 正しい型になったので、シンプルな判定に戻します
-	switch request.RequestContext.HTTP.Method {
-	case "POST":
-		// パスが `/api/signup` の場合
-		if strings.TrimSuffix(request.RequestContext.HTTP.Path, "/") == "/api/signup" {
-			responseData, statusCode = processSignupRequest(ctx, request)
-		} else if strings.TrimSuffix(request.RequestContext.HTTP.Path, "/") == "/api/login" {
-		// パスが `/api/login` の場合
-			responseData, statusCode = processLoginRequest(ctx, request)
-		} else if strings.TrimSuffix(request.RequestContext.HTTP.Path, "/") == "/api/time" {
-		// パスが `/api/time` または `/api/time/` の場合にマッチ
-			// --- Lambda環境での認証処理を追加 ---
-			authHeader := request.Headers["authorization"] // Lambdaのヘッダーキーは小文字
-			newCtx := ctx                                  // 元のコンテキストを保持
+	// ルーティングロジックを整理
+	path := request.RequestContext.HTTP.Path
+	method := request.RequestContext.HTTP.Method
 
+	if strings.HasPrefix(path, "/api/signup") && method == "POST" {
+		responseData, statusCode = processSignupRequest(ctx, request)
+	} else if strings.HasPrefix(path, "/api/login") && method == "POST" {
+		responseData, statusCode = processLoginRequest(ctx, request)
+	} else if strings.HasPrefix(path, "/api/time") {
+		if method == "POST" {
+			// POST /api/time の処理
+			authHeader := request.Headers["authorization"]
+			newCtx := ctx
 			if authHeader != "" {
 				parts := strings.Split(authHeader, " ")
 				if len(parts) == 2 && strings.ToLower(parts[0]) == "bearer" {
 					idToken := parts[1]
 					token, err := authClient.VerifyIDToken(ctx, idToken)
-					if err != nil {
-						log.Printf("WARN: Lambda - Failed to verify ID token, proceeding as anonymous: %v\n", err)
-					} else {
+					if err == nil {
 						log.Printf("INFO: Lambda - Authenticated user: %s", token.UID)
 						newCtx = setUIDInContext(ctx, token.UID)
 					}
-				} else {
-					log.Println("WARN: Lambda - Authorization header format is invalid, proceeding as anonymous.")
 				}
 			}
 			proxyReq := events.APIGatewayProxyRequest{
 				Body: request.Body,
 			}
 			responseData, statusCode = processPostRequest(newCtx, proxyReq)
-		}
-	case "GET":
-		// パス `/api/time/{spaceId}` にマッチするかどうかを判定
-		path := request.RequestContext.HTTP.Path
-		if strings.HasPrefix(path, "/api/time/") {
+		} else if method == "GET" {
+			// GET /api/time/{spaceId} の処理
 			// パスを / で分割して、4番目の要素（spaceId）を取得
 			parts := strings.Split(path, "/")
 			if len(parts) >= 4 && parts[3] != "" {
@@ -71,7 +62,10 @@ func handler(ctx context.Context, request events.APIGatewayV2HTTPRequest) (event
 				responseData, statusCode = processGetRequest(ctx, spaceId)
 			}
 		}
-	case "OPTIONS":
+	}
+
+	// OPTIONSリクエストはすべてのパスで許可
+	if method == "OPTIONS" {
 		// getCorsHeadersは utils.go にあるものを使用します
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusOK,
