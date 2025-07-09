@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
+	"strings"
 )
 
 // getEncryptionKey は環境変数から暗号化キーを取得します
@@ -121,4 +122,22 @@ func pkcs7Unpad(data []byte) ([]byte, error) {
 		return nil, fmt.Errorf("pkcs7: unpadding error - invalid padding size")
 	}
 	return data[:(length - unpadding)], nil
+}
+
+// decryptPassword はフロントエンドの簡易暗号化方式に対応した復号化関数です
+func decryptPassword(encryptedPassword string) (string, error) {
+	// Base64デコード
+	decoded, err := base64.StdEncoding.DecodeString(encryptedPassword)
+	if err != nil {
+		return "", fmt.Errorf("Base64デコードエラー: %v", err)
+	}
+
+	// パスワードとキーを分離
+	combined := string(decoded)
+	parts := strings.Split(combined, ":")
+	if len(parts) != 2 {
+		return "", fmt.Errorf("暗号化データの形式が不正です")
+	}
+
+	return parts[0], nil // パスワード部分を返す
 }
