@@ -84,6 +84,22 @@ func handleLoginRequest(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+// handleVerifyRequest は認証POSTリクエストを処理するハンドラです
+func handleVerifyRequest(w http.ResponseWriter, r *http.Request) {
+	response, statusCode := ProcessVerifyRequest(r.Context(), r)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleCleanupRequest はクリーンアップPOSTリクエストを処理するハンドラです
+func handleCleanupRequest(w http.ResponseWriter, r *http.Request) {
+	response, statusCode := ProcessCleanupRequest(r.Context(), r)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	json.NewEncoder(w).Encode(response)
+}
+
 // apiRouter は、HTTPメソッドに基づいてリクエストを適切なハンドラに振り分けるルーターです。
 func apiRouter(w http.ResponseWriter, r *http.Request) {
 	// パスに基づいて処理を分岐
@@ -93,6 +109,10 @@ func apiRouter(w http.ResponseWriter, r *http.Request) {
 		handleSignupRequest(w, r)
 	} else if strings.HasPrefix(r.URL.Path, "/api/login") {
 		handleLoginRequest(w, r)
+	} else if strings.HasPrefix(r.URL.Path, "/api/verify") {
+		handleVerifyRequest(w, r)
+	} else if strings.HasPrefix(r.URL.Path, "/api/cleanup") {
+		handleCleanupRequest(w, r)
 	} else {
 		http.NotFound(w, r)
 	}
