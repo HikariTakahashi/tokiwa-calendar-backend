@@ -100,6 +100,22 @@ func handleCleanupRequest(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+// handleGoogleAuthRequest はGoogle OAuth2.0認証POSTリクエストを処理するハンドラです
+func handleGoogleAuthRequest(w http.ResponseWriter, r *http.Request) {
+	response, statusCode := processGoogleAuthRequest(r.Context(), r)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleGitHubAuthRequest はGitHub OAuth2.0認証POSTリクエストを処理するハンドラです
+func handleGitHubAuthRequest(w http.ResponseWriter, r *http.Request) {
+	response, statusCode := processGitHubAuthRequest(r.Context(), r)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	json.NewEncoder(w).Encode(response)
+}
+
 // apiRouter は、HTTPメソッドに基づいてリクエストを適切なハンドラに振り分けるルーターです。
 func apiRouter(w http.ResponseWriter, r *http.Request) {
 	// パスに基づいて処理を分岐
@@ -113,6 +129,10 @@ func apiRouter(w http.ResponseWriter, r *http.Request) {
 		handleVerifyRequest(w, r)
 	} else if strings.HasPrefix(r.URL.Path, "/api/cleanup") {
 		handleCleanupRequest(w, r)
+	} else if strings.HasPrefix(r.URL.Path, "/api/auth/google") {
+		handleGoogleAuthRequest(w, r)
+	} else if strings.HasPrefix(r.URL.Path, "/api/auth/github") {
+		handleGitHubAuthRequest(w, r)
 	} else {
 		http.NotFound(w, r)
 	}
