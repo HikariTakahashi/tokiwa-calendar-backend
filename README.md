@@ -1,124 +1,125 @@
-## 前提
+# ToKiWa-calendar
 
-動作には以上の二つのレポジトリのインストールが必要です
+## 概要
+このプロジェクトは、フロントエンドとバックエンドで構成されるカレンダーアプリケーションです。
 
-**フロントエンド**:https://github.com/HikariTakahashi/simple-calendar-frontend
+### リポジトリ
+動作には、以下の二つのリポジトリが必要です。
 
-**バックエンド**:https://github.com/HikariTakahashi/simple-calendar-backend ← いまここ
+* **フロントエンド**: [https://github.com/HikariTakahashi/simple-calendar-frontend](https://github.com/HikariTakahashi/simple-calendar-frontend)
+* **バックエンド**: [https://github.com/HikariTakahashi/simple-calendar-backend](https://github.com/HikariTakahashi/simple-calendar-backend) (このリポジトリ)
 
-## 起動準備(フロントエンド)
+---
 
-1. レポジトリのクローン
+## 重要なドキュメント
 
+この`README.md`は、開発環境をセットアップし、アプリケーションを起動するためのクイックスタートガイドです。
+
+APIのエンドポイント仕様、各ファイルの責任範囲、詳細なテスト手順など、**プロジェクトの技術的な仕様はすべて以下のドキュメントに記載されています。** 開発を始める前に必ずご一読ください。
+
+> **参照先**: `ToKiWa-calendar バックエンド仕様書` (チーム内で共有)
+
+---
+
+## 1. ローカル開発環境のセットアップ
+
+### 1.1. バックエンド (このリポジトリ)
+#### ① レポジトリのクローン
 ```bash
-git clone https://github.com/HikariTakahashi/simple-calendar-frontend.git
-```
-
-2. 必要なもののインストール
-
-```bash
-// フロントエンドのプロジェクトに移動(いつもの開き方でOK)
-cd simple-calendar-frontend
-
-// Node.jsのパッケージ管理システムをインストール
-npm install
-```
-
-注:vue-drumroll-datetime-pickerの利用は廃止されました。特にアンインストール等は必要ないです。
-
-## 起動準備(バックエンド)
-
-1. レポジトリのクローン
-
-```bash
-git clone https://github.com/HikariTakahashi/simple-calendar-backend.git
-```
-
-2. バックエンドのプロジェクトに移動(個人のいつもの開き方で OK)
-
-```bash
+git clone [https://github.com/HikariTakahashi/simple-calendar-backend.git](https://github.com/HikariTakahashi/simple-calendar-backend.git)
 cd simple-calendar-backend
 ```
 
-3. Firebaseへの接続準備
-バックエンドサーバーはデータの永続化にFirebase (Firestore) を利用しています。そのため、以下の準備が必要です。
+#### ② 環境変数の設定
+プロジェクトのルートに `.env` ファイルを作成し、Firebase管理者から共有された認証情報を設定します。
 
-- GOOGLE_APPLICATION_CREDENTIALS_JSON 環境変数の設定: 
-Firebaseのサービスアカウントキー(JSONファイル)はチームメンバーが管理しています。開発に必要なサービスアカウントキーの情報を受け取り、GOOGLE_APPLICATION_CREDENTIALS_JSON という名前の環境変数に設定してください。この環境変数を設定することで、Firebaseへの認証を行えるようになります。
-- Firestoreへのアクセス権限: 
-開発に使用するGoogleアカウントが、対象のFirestoreデータベースへの読み書き権限を持っていることが必要です。必要に応じて、Firebaseプロジェクトの管理者に招待を依頼してください。
+```env
+# Firebaseのサービスアカウントキー(JSON)の"内容"をシングルクォートで囲って貼り付け
+GOOGLE_APPLICATION_CREDENTIALS_JSON='{ ... }'
 
-これらの設定が正しく行われていない場合、バックエンドサーバーは起動時またはデータアクセス時にエラーを発生させます。
+# FirebaseプロジェクトのWeb APIキー
+FIREBASE_API_KEY="AIzaSy..."
 
-## 開発サーバーの起動
+# AES暗号化・復号化で使用するキー (現在は未使用)
+ENCRYPTION_KEY="your-secret-encryption-key-32-chars-long!"
+```
+> **Note**: これらの設定が正しく行われていない場合、サーバーは起動時またはデータアクセス時にエラーを発生させます。
 
-1. バックエンド起動（Go 言語）
-
+### 1.2. フロントエンド
+#### ① レポジトリのクローン
 ```bash
-// バックエンドのターミナルで実行
-go run .
+git clone [https://github.com/HikariTakahashi/simple-calendar-frontend.git](https://github.com/HikariTakahashi/simple-calendar-frontend.git)
+cd simple-calendar-frontend
+```
+#### ② 依存パッケージのインストール
+```bash
+npm install
 ```
 
-注: 以前は `go run main.go` でしたが、ファイル分割により `go run .`に変更されました。プロジェクト内のすべての .go ファイルがビルド対象になります。
+---
 
-2. フロントエンド起動（Nuxt.js）
+## 2. 開発サーバーの起動
+
+### 2.1. バックエンドサーバー (Go)
+バックエンドのプロジェクトディレクトリで、以下のコマンドを実行します。
 
 ```bash
-// フロントエンドのターミナルで実行
+go run --tags=local .
+```
+* `--tags=local` フラグは、ローカル開発用の設定を有効にするために**必須**です。
+* サーバーは `http://localhost:8080` で起動します。
+
+### 2.2. フロントエンドサーバー (Nuxt.js)
+フロントエンドのプロジェクトディレクトリで、以下のコマンドを実行します。
+
+```bash
 npm run dev
 ```
+* 開発用のサーバーが `http://localhost:3000` で起動します。
 
-3. 開発用のサーバーにアクセス
+---
 
-基本的には http://localhost:3000 にあります。`npm run dev` を実行した powershell にリンクが出るのでそっちを見てください。
+## 3. 本番環境へのデプロイ (AWS Lambda)
+本番環境であるAWS Lambdaへアプリケーションをデプロイする手順です。
 
-バックエンドは基本的に http://localhost:8080/api/calendar にあります。フロントエンドはここからデータを取得しているのでデバックの際にどうぞ。
+### 3.1. 実行ファイルのビルド
+Lambda上で動作する実行ファイル(`bootstrap`)を生成します。
 
-## Thunder Client を使ったバックエンドのテスト
+* **PowerShell (Windows) の場合**
+    ```powershell
+    $env:GOOS="linux"; $env:GOARCH="arm64"; go build -tags lambda.norpc -o bootstrap .
+    ```
+* **Mac / Linux の場合**
+    ```bash
+    GOOS=linux GOARCH=amd64 go build -tags lambda.norpc -o bootstrap .
+    ```
 
-Thunder Client は VSCode の拡張機能で、フロントを立てずにバックエンド単体でリクエストのテストが可能です。
+### 3.2. Zip化
+生成された`bootstrap`ファイルをZip形式で圧縮します。
 
-### 導入方法
+* **PowerShell (Windows) の場合**
+    ```powershell
+    Compress-Archive -Path .\bootstrap -DestinationPath .\bootstrap.zip -Force
+    ```
+* **Mac / Linux の場合**
+    ```bash
+    zip bootstrap.zip bootstrap
+    ```
 
-1. VSCode の「拡張機能」から Thunder Client を検索してインストール
+### 3.3. AWS Lambdaへのアップロード
+1.  AWS マネジメントコンソールで対象のLambda関数を開きます。
+2.  「コードソース」セクションから「アップロード元」>「.zipファイル」を選択します。
+3.  作成した`bootstrap.zip`をアップロードします。
+4.  デプロイ完了後、「テスト」タブからテストイベントを実行し、成功することを確認します。
 
-### テスト方法（GET リクエスト）
+---
 
-1. Thunder Client を開く
+## 4. APIテストについて
+VSCodeの拡張機能「Thunder Client」を使用することで、フロントエンドを介さずにバックエンドAPIの動作を直接テストできます。
 
-2. `GET`を選択し、URL に `http://localhost:8080/api/calendar?year=2024&month=5&move=`（テスト用クエリ）などを入力
+各エンドポイントの具体的なテスト手順（リクエストボディ、ヘッダー、結果の判断など）については、**バックエンド仕様書**の「APIテストガイド」の章を詳しく参照してください。
 
-3. 「Send」ボタンを押すと、右側にレスポンスが表示される
-
-4. 表示されたレスポンスより、挙動やステータスコードを確認
-
-### POST リクエストでのテスト（※未実装予定）
-
-将来的にバックエンドで POST リクエストを受け取る場合、以下のようにテスト可能。
-
-1. Thunder Client でメソッドを POST に設定
-
-2. `Body` タブで `JSON` を選び、以下のように入力
-
-```bash
-  ｛
-　"title": "会議",
-  "date": "2024-05-10"
-｝
-```
-
-3. `Send` を押して、レスポンスやエラーを確認
-
-### ステータスコードの意味
-
-- 200 OK：バックエンドが正常動作
-
-- 400 Bad Request：クエリの入力ミスなど → フロントエンドの問題
-
-- 500 Internal Server Error：サーバー内部のエラー → バックエンドの問題
-
-- 404 Not Found：API エンドポイントが存在しない
-
-- 403 Forbidden：管理者権限が必要
-
-- 401 Unauthorized：認証が必要
+### ステータスコードの基本的な切り分け
+* `2xx` (成功): バックエンドは正常にリクエストを処理しています。
+* `4xx` (クライアントエラー): リクエスト内容に問題があります (例: 必須項目不足、認証エラー)。多くの場合、フロントエンド側の問題です。
+* `5xx` (サーバーエラー): サーバー内部で予期せぬエラーが発生しました。バックエンド側のコードやインフラの問題です。
