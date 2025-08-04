@@ -39,6 +39,8 @@ func handler(ctx context.Context, request events.APIGatewayV2HTTPRequest) (event
 		responseData, statusCode = processGoogleAuthRequest(ctx, request)
 	} else if strings.HasPrefix(path, "/api/auth/github") && method == "POST" {
 		responseData, statusCode = processGitHubAuthRequest(ctx, request)
+	} else if strings.HasPrefix(path, "/api/auth/twitter") && method == "POST" {
+		responseData, statusCode = processTwitterAuthRequest(ctx, request)
 	} else if strings.HasPrefix(path, "/api/time") {
 		if method == "POST" {
 			// POST /api/time の処理
