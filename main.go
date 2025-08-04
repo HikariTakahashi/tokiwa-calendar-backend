@@ -116,6 +116,14 @@ func handleGitHubAuthRequest(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+// handleTwitterAuthRequest はTwitter OAuth2.0認証POSTリクエストを処理するハンドラです
+func handleTwitterAuthRequest(w http.ResponseWriter, r *http.Request) {
+	response, statusCode := processTwitterAuthRequest(r.Context(), r)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	json.NewEncoder(w).Encode(response)
+}
+
 // apiRouter は、HTTPメソッドに基づいてリクエストを適切なハンドラに振り分けるルーターです。
 func apiRouter(w http.ResponseWriter, r *http.Request) {
 	// パスに基づいて処理を分岐
@@ -133,6 +141,8 @@ func apiRouter(w http.ResponseWriter, r *http.Request) {
 		handleGoogleAuthRequest(w, r)
 	} else if strings.HasPrefix(r.URL.Path, "/api/auth/github") {
 		handleGitHubAuthRequest(w, r)
+	} else if strings.HasPrefix(r.URL.Path, "/api/auth/twitter") {
+		handleTwitterAuthRequest(w, r)
 	} else {
 		http.NotFound(w, r)
 	}
