@@ -33,12 +33,17 @@ func getFirebaseAPIKey() string {
 	// 環境変数からAPIキーを取得
 	apiKey := os.Getenv("FIREBASE_API_KEY")
 	if apiKey != "" {
+		log.Printf("DEBUG: Firebase API key found in environment variable")
 		return apiKey
 	}
 	
+	log.Printf("WARN: FIREBASE_API_KEY environment variable not set")
+	
 	// ローカル開発用のデフォルト値（本番環境では必ず環境変数を設定してください）
 	// 注意: この値は実際のFirebaseプロジェクトのAPIキーに置き換える必要があります
-	return "AIzaSyBxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+	defaultKey := "AIzaSyBxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+	log.Printf("WARN: Using default API key (this will not work in production): %s", defaultKey[:20]+"...")
+	return defaultKey
 }
 
 // verifyPasswordWithFirebase はFirebase Auth REST APIを使用してパスワード認証を行います
@@ -162,24 +167,25 @@ func processLoginRequest(ctx context.Context, req interface{}) (map[string]inter
 	}
 
 	// 認証成功
-	idToken := authResponse["idToken"].(string)
 	localId := authResponse["localId"].(string)
 	email := authResponse["email"].(string)
 
 	log.Printf("INFO: Firebase auth successful. UID: %s\n", localId)
 
-	// カスタムトークンを生成（フロントエンドでの認証用）
-	customToken, err := authClient.CustomToken(ctx, localId)
+	// セッショントークンを生成（Firebase IDToken/CustomTokenの代替）
+	sessionToken, err := generateSessionToken(localId, email)
 	if err != nil {
-		log.Printf("ERROR: Failed to create custom token for UID %s: %v\n", localId, err)
-		return map[string]interface{}{"error": "認証トークンの生成に失敗しました"}, http.StatusInternalServerError
+		log.Printf("ERROR: Failed to generate session token for UID %s: %v\n", localId, err)
+		return map[string]interface{}{"error": "セッショントークンの生成に失敗しました"}, http.StatusInternalServerError
 	}
 
 	return map[string]interface{}{
-		"message":     "ログインが成功しました",
-		"uid":         localId,
-		"email":       email,
-		"customToken": customToken,
-		"idToken":     idToken,
+		"message":      "ログインが成功しました",
+		"uid":          localId,
+		"email":        email,
+		"sessionToken": sessionToken,
+		// Firebase関連のトークンは削除
+		// "customToken": customToken,
+		// "idToken":     idToken,
 	}, http.StatusOK
 }
