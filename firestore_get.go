@@ -137,3 +137,25 @@ func isUserEmailVerified(ctx context.Context, uid string) (bool, error) {
 	
 	return userRecord.EmailVerified, nil
 }
+
+// getUserDataFromFirestore はユーザーデータをFirestoreから取得します
+func getUserDataFromFirestore(ctx context.Context, uid string) (*UserData, error) {
+	// ユーザーデータ用のコレクション名
+	collectionName := firestoreCollectionName + "_user_data"
+	
+	// Firestoreから取得
+	doc, err := firestoreClient.Collection(collectionName).Doc(uid).Get(ctx)
+	if err != nil {
+		log.Printf("INFO: User data not found for UID: %s", uid)
+		return nil, err
+	}
+	
+	var userData UserData
+	if err := doc.DataTo(&userData); err != nil {
+		log.Printf("ERROR: Failed to convert user data: %v", err)
+		return nil, err
+	}
+	
+	log.Printf("INFO: User data retrieved from Firestore for UID: %s", uid)
+	return &userData, nil
+}
