@@ -140,8 +140,8 @@ func isUserEmailVerified(ctx context.Context, uid string) (bool, error) {
 
 // getUserDataFromFirestore はユーザーデータをFirestoreから取得します
 func getUserDataFromFirestore(ctx context.Context, uid string) (*UserData, error) {
-	// ユーザーデータ用のコレクション名
-	collectionName := firestoreCollectionName + "_user_data"
+	// ユーザーデータ用のコレクション名（環境に依存しない固定名）
+	collectionName := "user_data"
 	
 	// Firestoreから取得
 	doc, err := firestoreClient.Collection(collectionName).Doc(uid).Get(ctx)
