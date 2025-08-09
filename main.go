@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -58,6 +59,70 @@ func optionalAuthMiddleware(next http.Handler) http.Handler {
 		ctx := setUIDInContext(r.Context(), token.UID)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+// authMiddleware はHTTPリクエストの認証を"必須"で行うミドルウェアです。
+func authMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authHeader := r.Header.Get("Authorization")
+		
+		// デバッグ情報: リクエストヘッダーの確認
+		log.Printf("DEBUG: authMiddleware - URL: %s, Method: %s", r.URL.Path, r.Method)
+		log.Printf("DEBUG: authMiddleware - Authorization header exists: %v", authHeader != "")
+		if authHeader != "" {
+			log.Printf("DEBUG: authMiddleware - Authorization header preview: %s", authHeader[:min(len(authHeader), 30)]+"...")
+		}
+		
+		if authHeader == "" {
+			log.Printf("ERROR: authMiddleware - No authorization header provided")
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": "認証が必要です"})
+			return
+		}
+
+		// "Bearer " プレフィックスを検証・削除
+		parts := strings.Split(authHeader, " ")
+		if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+			log.Printf("ERROR: authMiddleware - Invalid authorization header format: %s", authHeader[:min(len(authHeader), 20)])
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": "認証ヘッダーの形式が正しくありません"})
+			return
+		}
+		sessionToken := parts[1]
+		log.Printf("DEBUG: authMiddleware - Session token length: %d", len(sessionToken))
+
+		// セッショントークンを検証
+		userSession, err := validateSessionToken(sessionToken)
+		if err != nil {
+			log.Printf("ERROR: authMiddleware - Failed to verify session token: %v", err)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": "認証に失敗しました"})
+			return
+		}
+		
+		log.Printf("DEBUG: authMiddleware - Session validation successful for UID: %s", userSession.UID)
+
+		// 認証成功 - ユーザー情報をリクエストコンテキストに追加
+		// Firebase Auth Tokenの形式に合わせてコンテキストに格納
+		mockToken := struct {
+			UID string
+		}{
+			UID: userSession.UID,
+		}
+		ctx := context.WithValue(r.Context(), "token", mockToken)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+// min は2つの整数の最小値を返すヘルパー関数
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // handlePostRequest はPOSTリクエストを処理するハンドラです。
@@ -137,6 +202,8 @@ func apiRouter(w http.ResponseWriter, r *http.Request) {
 		handleVerifyRequest(w, r)
 	} else if strings.HasPrefix(r.URL.Path, "/api/cleanup") {
 		handleCleanupRequest(w, r)
+	} else if strings.HasPrefix(r.URL.Path, "/api/user-data") {
+		authMiddleware(http.HandlerFunc(handleUserDataRequest)).ServeHTTP(w, r)
 	} else if strings.HasPrefix(r.URL.Path, "/api/auth/google") {
 		handleGoogleAuthRequest(w, r)
 	} else if strings.HasPrefix(r.URL.Path, "/api/auth/github") {
@@ -157,7 +224,7 @@ func handleTimeRequest(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "spaceId is missing in the URL path", http.StatusBadRequest)
 			return
 		}
-		response, statusCode := processGetRequest(r.Context(), spaceId)
+		response, statusCode := processGetScheduleRequest(r.Context(), spaceId)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(statusCode)
 		json.NewEncoder(w).Encode(response)
