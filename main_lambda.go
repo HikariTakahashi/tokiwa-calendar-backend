@@ -35,6 +35,16 @@ func handler(ctx context.Context, request events.APIGatewayV2HTTPRequest) (event
 		responseData, statusCode = processLoginRequest(ctx, request)
 	} else if strings.HasPrefix(path, "/api/cleanup") && method == "POST" {
 		responseData, statusCode = ProcessCleanupRequest(ctx, request)
+	} else if strings.HasPrefix(path, "/api/user-data") {
+		response, err := lambdaUserDataHandler(ctx, request)
+		if err != nil {
+			log.Printf("ERROR: Lambda user data handler error: %v", err)
+			responseData = map[string]interface{}{"error": "Internal server error"}
+			statusCode = http.StatusInternalServerError
+		} else {
+			json.Unmarshal([]byte(response.Body), &responseData)
+			statusCode = response.StatusCode
+		}
 	} else if strings.HasPrefix(path, "/api/auth/google") && method == "POST" {
 		responseData, statusCode = processGoogleAuthRequest(ctx, request)
 	} else if strings.HasPrefix(path, "/api/auth/github") && method == "POST" {
