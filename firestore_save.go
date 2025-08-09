@@ -30,3 +30,19 @@ func saveVerificationToken(ctx context.Context, token *VerificationToken) error 
 	log.Printf("INFO: Verification token saved to Firestore for email: %s", token.Email)
 	return nil
 }
+
+// saveUserDataToFirestore はユーザーデータをFirestoreに保存します
+func saveUserDataToFirestore(ctx context.Context, uid string, userData *UserData) error {
+	// ユーザーデータ用のコレクション名（環境に依存しない固定名）
+	collectionName := "user_data"
+	
+	// Firestoreに保存
+	_, err := firestoreClient.Collection(collectionName).Doc(uid).Set(ctx, userData)
+	if err != nil {
+		log.Printf("ERROR: Failed to save user data to Firestore: %v", err)
+		return err
+	}
+	
+	log.Printf("INFO: User data saved to Firestore for UID: %s", uid)
+	return nil
+}
