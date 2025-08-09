@@ -1,5 +1,3 @@
-// handler_post.go
-
 package main
 
 import (

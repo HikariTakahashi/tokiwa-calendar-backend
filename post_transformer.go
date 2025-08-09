@@ -1,5 +1,3 @@
-// post_transfer.go
-
 package main
 
 // SchedulePostRequest は、POSTリクエストのJSONボディの構造を定義します。

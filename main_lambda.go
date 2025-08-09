@@ -33,6 +33,8 @@ func handler(ctx context.Context, request events.APIGatewayV2HTTPRequest) (event
 		responseData, statusCode = processSignupRequest(ctx, request)
 	} else if strings.HasPrefix(path, "/api/login") && method == "POST" {
 		responseData, statusCode = processLoginRequest(ctx, request)
+	} else if strings.HasPrefix(path, "/api/cleanup") && method == "POST" {
+		responseData, statusCode = ProcessCleanupRequest(ctx, request)
 	} else if strings.HasPrefix(path, "/api/time") {
 		if method == "POST" {
 			// POST /api/time の処理

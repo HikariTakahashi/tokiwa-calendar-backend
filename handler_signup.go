@@ -108,8 +108,52 @@ func processSignupRequest(ctx context.Context, req interface{}) (map[string]inte
 
 	log.Printf("INFO: User successfully created. UID: %s\n", userRecord.UID)
 
+	// 認証トークンを生成
+	verificationToken, err := generateVerificationToken(cleanEmail, userRecord.UID)
+	if err != nil {
+		log.Printf("ERROR: Failed to generate verification token: %v\n", err)
+		// トークン生成に失敗してもユーザー作成は成功しているので、警告として記録
+		log.Printf("WARN: User created but verification email could not be sent")
+		return map[string]interface{}{
+			"message": "ユーザーが正常に作成されました（認証メールの送信に失敗しました）",
+			"uid":     userRecord.UID,
+		}, http.StatusCreated
+	}
+
+	// 認証トークンをFirestoreに保存
+	if err := saveVerificationToken(ctx, verificationToken); err != nil {
+		log.Printf("ERROR: Failed to save verification token: %v\n", err)
+		// トークン保存に失敗してもユーザー作成は成功しているので、警告として記録
+		log.Printf("WARN: User created but verification token could not be saved")
+		return map[string]interface{}{
+			"message": "ユーザーが正常に作成されました（認証メールの送信に失敗しました）",
+			"uid":     userRecord.UID,
+		}, http.StatusCreated
+	}
+
+	// メール設定の検証
+	if err := validateEmailConfig(); err != nil {
+		log.Printf("ERROR: Email configuration validation failed: %v\n", err)
+		log.Printf("WARN: User created but email configuration is invalid")
+		return map[string]interface{}{
+			"message": "ユーザーが正常に作成されました（メール設定が無効です）",
+			"uid":     userRecord.UID,
+		}, http.StatusCreated
+	}
+
+	// 認証メールを送信
+	if err := sendVerificationEmail(cleanEmail, verificationToken.Token); err != nil {
+		log.Printf("ERROR: Failed to send verification email: %v\n", err)
+		// メール送信に失敗してもユーザー作成は成功しているので、警告として記録
+		log.Printf("WARN: User created but verification email could not be sent")
+		return map[string]interface{}{
+			"message": "ユーザーが正常に作成されました（認証メールの送信に失敗しました）",
+			"uid":     userRecord.UID,
+		}, http.StatusCreated
+	}
+
 	return map[string]interface{}{
-		"message": "ユーザーが正常に作成されました",
+		"message": "ユーザーが正常に作成されました。認証メールをお送りしました。",
 		"uid":     userRecord.UID,
 	}, http.StatusCreated
 }
