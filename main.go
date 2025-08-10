@@ -8,6 +8,8 @@ import (
 	"log"
 	"net/http"
 	"strings"
+
+	"firebase.google.com/go/v4/auth"
 )
 
 // setCORS はローカルサーバー用のCORSヘッダーを設定します。
@@ -189,6 +191,128 @@ func handleTwitterAuthRequest(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+// handleUserProvidersRequest はユーザープロバイダー情報取得リクエストを処理するハンドラです
+func handleUserProvidersRequest(w http.ResponseWriter, r *http.Request) {
+	// 認証情報をコンテキストから取得
+	tokenValue := r.Context().Value("token")
+	if tokenValue == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "認証が必要です"})
+		return
+	}
+
+	mockToken, ok := tokenValue.(struct{ UID string })
+	if !ok {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "認証が必要です"})
+		return
+	}
+
+	// Firebase auth.Token形式にマッピング
+	token := &auth.Token{
+		UID: mockToken.UID,
+	}
+
+	response, statusCode := processUserProvidersRequest(r.Context(), token)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleUserProvidersDetailRequest はユーザープロバイダー詳細情報取得リクエストを処理するハンドラです
+func handleUserProvidersDetailRequest(w http.ResponseWriter, r *http.Request) {
+	// 認証情報をコンテキストから取得
+	tokenValue := r.Context().Value("token")
+	if tokenValue == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "認証が必要です"})
+		return
+	}
+
+	mockToken, ok := tokenValue.(struct{ UID string })
+	if !ok {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "認証が必要です"})
+		return
+	}
+
+	// Firebase auth.Token形式にマッピング
+	token := &auth.Token{
+		UID: mockToken.UID,
+	}
+
+	log.Printf("DEBUG: handleUserProvidersDetailRequest called for UID: %s", token.UID)
+	response, statusCode := processUserProvidersDetailRequest(r.Context(), token)
+	log.Printf("DEBUG: processUserProvidersDetailRequest returned response: %+v", response)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleLinkAccountRequest はアカウントリンクリクエストを処理するハンドラです
+func handleLinkAccountRequest(w http.ResponseWriter, r *http.Request) {
+	// 認証情報をコンテキストから取得
+	tokenValue := r.Context().Value("token")
+	if tokenValue == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "認証が必要です"})
+		return
+	}
+
+	mockToken, ok := tokenValue.(struct{ UID string })
+	if !ok {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "認証が必要です"})
+		return
+	}
+
+	// Firebase auth.Token形式にマッピング
+	token := &auth.Token{
+		UID: mockToken.UID,
+	}
+
+	response, statusCode := processLinkAccountRequest(r.Context(), r, token)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleUnlinkAccountRequest はアカウント解除リクエストを処理するハンドラです
+func handleUnlinkAccountRequest(w http.ResponseWriter, r *http.Request) {
+	// 認証情報をコンテキストから取得
+	tokenValue := r.Context().Value("token")
+	if tokenValue == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "認証が必要です"})
+		return
+	}
+
+	mockToken, ok := tokenValue.(struct{ UID string })
+	if !ok {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "認証が必要です"})
+		return
+	}
+
+	// Firebase auth.Token形式にマッピング
+	token := &auth.Token{
+		UID: mockToken.UID,
+	}
+
+	response, statusCode := processUnlinkAccountRequest(r.Context(), r, token)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	json.NewEncoder(w).Encode(response)
+}
+
 // apiRouter は、HTTPメソッドに基づいてリクエストを適切なハンドラに振り分けるルーターです。
 func apiRouter(w http.ResponseWriter, r *http.Request) {
 	// パスに基づいて処理を分岐
@@ -210,6 +334,14 @@ func apiRouter(w http.ResponseWriter, r *http.Request) {
 		handleGitHubAuthRequest(w, r)
 	} else if strings.HasPrefix(r.URL.Path, "/api/auth/twitter") {
 		handleTwitterAuthRequest(w, r)
+	} else if strings.HasPrefix(r.URL.Path, "/api/user-providers-detail") {
+		authMiddleware(http.HandlerFunc(handleUserProvidersDetailRequest)).ServeHTTP(w, r)
+	} else if strings.HasPrefix(r.URL.Path, "/api/user-providers") {
+		authMiddleware(http.HandlerFunc(handleUserProvidersRequest)).ServeHTTP(w, r)
+	} else if strings.HasPrefix(r.URL.Path, "/api/link-account") {
+		authMiddleware(http.HandlerFunc(handleLinkAccountRequest)).ServeHTTP(w, r)
+	} else if strings.HasPrefix(r.URL.Path, "/api/unlink-account") {
+		authMiddleware(http.HandlerFunc(handleUnlinkAccountRequest)).ServeHTTP(w, r)
 	} else {
 		http.NotFound(w, r)
 	}
