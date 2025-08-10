@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 
 	"firebase.google.com/go/v4/auth"
 	"github.com/aws/aws-lambda-go/events"
@@ -18,6 +19,7 @@ import (
 type TwitterAuthRequest struct {
 	Code        string `json:"code"`
 	RedirectURI string `json:"redirect_uri"`
+	LinkUID     string `json:"linkUID,omitempty"` // アカウントリンク時のUID
 }
 
 // TwitterAuthResponse はTwitter OAuth2.0認証レスポンスの構造体です
@@ -197,32 +199,125 @@ func getUserInfoFromTwitter(accessToken string) (*TwitterUserInfo, error) {
 }
 
 // createOrGetFirebaseUserForTwitter はTwitterユーザー情報に基づいてFirebaseユーザーを作成または取得します
-func createOrGetFirebaseUserForTwitter(ctx context.Context, userInfo *TwitterUserInfo) (string, error) {
-	// TwitterユーザーIDをFirebase UIDとして使用
-	twitterUID := "twitter:" + userInfo.ID
-
-	// 既存のユーザーを検索
-	userRecord, err := authClient.GetUser(ctx, twitterUID)
-	if err == nil {
-		// ユーザーが存在する場合
-		log.Printf("INFO: Existing Twitter user found: %s", userRecord.UID)
-		return userRecord.UID, nil
+func createOrGetFirebaseUserForTwitter(ctx context.Context, userInfo *TwitterUserInfo, linkUID string) (string, error) {
+	// メールアドレスが取得できない場合はエラー
+	if userInfo.Email == "" {
+		return "", fmt.Errorf("Twitterアカウントからメールアドレスを取得できませんでした")
 	}
 
-	// ユーザーが存在しない場合、新しく作成
-	params := (&auth.UserToCreate{}).
-		UID(twitterUID).
-		DisplayName(userInfo.Name).
-		PhotoURL(userInfo.ProfileImageURL).
-		Email(userInfo.Email).
-		EmailVerified(true)
-
-	userRecord, err = authClient.CreateUser(ctx, params)
+	// アカウントリンク時は、指定されたUIDを使用
+	if linkUID != "" {
+		log.Printf("INFO: Account linking mode for UID: %s", linkUID)
+		
+		// 指定されたUIDのユーザーが存在するか確認
+		_, err := authClient.GetUser(ctx, linkUID)
+		if err != nil {
+			return "", fmt.Errorf("リンク先のユーザーが見つかりません: %v", err)
+		}
+		
+		// 既存のユーザーデータを取得
+		userData, err := getUserDataByUID(ctx, linkUID)
+		if err != nil {
+			log.Printf("INFO: No existing user data found for UID %s, creating new user data", linkUID)
+			// 既存のユーザーデータが見つからない場合は新しいユーザーデータを作成
+			userData = &UserData{
+				UserName:  "", // 新規ユーザーの場合は空
+				UserColor: "#3b82f6", // 新規ユーザーの場合はデフォルトカラー
+				UID:       linkUID,
+				Email:     []EmailProviderInfo{},
+				Google:    []OAuthProviderInfo{},
+				GitHub:    []OAuthProviderInfo{},
+				Twitter:   []OAuthProviderInfo{},
+			}
+		} else {
+			log.Printf("INFO: Found existing user data for UID %s (UserName: %s, UserColor: %s)", 
+				linkUID, userData.UserName, userData.UserColor)
+		}
+		
+		// Twitterプロバイダー情報を追加（既存のユーザーデータは保持）
+		addOAuthProvider(userData, "twitter", userInfo.Email, linkUID)
+		
+		// ユーザーデータを保存（既存のユーザー名、カラーは保持される）
+		log.Printf("INFO: About to save user data for UID: %s (UserName: %s, UserColor: %s)", 
+			linkUID, userData.UserName, userData.UserColor)
+		if err := saveUserDataToFirestore(ctx, linkUID, userData); err != nil {
+			log.Printf("WARN: Failed to save user data: %v", err)
+		}
+		
+		return linkUID, nil
+	}
+	
+	// 新規ログイン時は、メールアドレスで既存のユーザーを確認
+	userRecord, err := authClient.GetUserByEmail(ctx, userInfo.Email)
 	if err != nil {
-		return "", fmt.Errorf("failed to create Firebase user: %v", err)
+		// ユーザーが存在しない場合は新しいTwitterユーザーを作成
+		twitterUID := "twitter:" + userInfo.ID
+		params := (&auth.UserToCreate{}).
+			UID(twitterUID).
+			DisplayName(userInfo.Name).
+			PhotoURL(userInfo.ProfileImageURL).
+			Email(userInfo.Email).
+			EmailVerified(true)
+
+		userRecord, err = authClient.CreateUser(ctx, params)
+		if err != nil {
+			return "", fmt.Errorf("failed to create Firebase user: %v", err)
+		}
+
+		log.Printf("INFO: New Twitter user created: %s", userRecord.UID)
+		
+		// 新しいユーザーデータを作成してFirestoreに保存
+		userData := &UserData{
+			UserName:  "",
+			UserColor: "#3b82f6",
+			UID:       twitterUID,
+			Email:     []EmailProviderInfo{},
+			Google:    []OAuthProviderInfo{},
+			GitHub:    []OAuthProviderInfo{},
+			Twitter:   []OAuthProviderInfo{},
+		}
+		addOAuthProvider(userData, "twitter", userInfo.Email, twitterUID)
+		
+		if err := saveUserDataToFirestore(ctx, twitterUID, userData); err != nil {
+			log.Printf("WARN: Failed to save user data for new Twitter user: %v", err)
+		}
+	} else {
+		// 既存のユーザーが見つかった場合
+		log.Printf("INFO: Found existing Firebase user for email: %s", userInfo.Email)
+		
+		// 既存のユーザーデータを取得（UIDベースで検索）
+		userData, err := getUserDataByUID(ctx, userRecord.UID)
+		if err != nil {
+			log.Printf("INFO: No existing user data found for UID %s, creating new user data", userRecord.UID)
+			// 既存のユーザーデータが見つからない場合は新しいユーザーデータを作成
+			userData = &UserData{
+				UserName:  "", // 新規ユーザーの場合は空
+				UserColor: "#3b82f6", // 新規ユーザーの場合はデフォルトカラー
+				UID:       userRecord.UID,
+				Email:     []EmailProviderInfo{},
+				Google:    []OAuthProviderInfo{},
+				GitHub:    []OAuthProviderInfo{},
+				Twitter:   []OAuthProviderInfo{},
+			}
+		} else {
+			log.Printf("INFO: Found existing user data for UID %s (UserName: %s, UserColor: %s)", 
+				userRecord.UID, userData.UserName, userData.UserColor)
+		}
+		
+		// UIDを既存のユーザーレコードのUIDに統一
+		userData.UID = userRecord.UID
+		
+		// Twitterプロバイダー情報を追加（既存のユーザーデータは保持）
+		addOAuthProvider(userData, "twitter", userInfo.Email, userRecord.UID)
+		
+		// ユーザーデータを保存（既存のユーザー名、カラーは保持される）
+		log.Printf("INFO: About to save user data for UID: %s (UserName: %s, UserColor: %s)", 
+			userRecord.UID, userData.UserName, userData.UserColor)
+		if err := saveUserDataToFirestore(ctx, userRecord.UID, userData); err != nil {
+			log.Printf("WARN: Failed to save user data: %v", err)
+		}
 	}
 
-	log.Printf("INFO: New Twitter user created: %s", userRecord.UID)
 	return userRecord.UID, nil
 }
 
@@ -261,7 +356,7 @@ func processTwitterAuthRequest(ctx context.Context, req interface{}) (map[string
 		return map[string]interface{}{"error": "リダイレクトURIが提供されていません"}, http.StatusBadRequest
 	}
 
-	log.Printf("INFO: Twitter OAuth2.0 request received with code length: %d", len(authData.Code))
+	log.Printf("INFO: Twitter OAuth2.0 request received with code length: %d, linkUID: %s", len(authData.Code), authData.LinkUID)
 
 	// 認証コードをアクセストークンと交換
 	tokenResponse, err := exchangeTwitterCodeForToken(authData.Code, authData.RedirectURI)
@@ -285,25 +380,29 @@ func processTwitterAuthRequest(ctx context.Context, req interface{}) (map[string
 	log.Printf("INFO: Twitter user info retrieved for email: %s", userInfo.Email)
 
 	// Firebaseユーザーを作成または取得
-	uid, err := createOrGetFirebaseUserForTwitter(ctx, userInfo)
+	uid, err := createOrGetFirebaseUserForTwitter(ctx, userInfo, authData.LinkUID)
 	if err != nil {
 		log.Printf("ERROR: Failed to create/get Firebase user: %v\n", err)
+		// アカウントリンクが必要な場合のエラーメッセージ
+		if strings.Contains(err.Error(), "already in use") {
+			return map[string]interface{}{"error": "このTwitterアカウントは既に他のアカウントで使用されています"}, http.StatusConflict
+		}
 		return map[string]interface{}{"error": "ユーザーアカウントの作成に失敗しました"}, http.StatusInternalServerError
 	}
 
-	// カスタムトークンを生成
-	customToken, err := authClient.CustomToken(ctx, uid)
+	// セッショントークンを生成
+	sessionToken, err := generateSessionToken(uid, userInfo.Email)
 	if err != nil {
-		log.Printf("ERROR: Failed to create custom token for UID %s: %v\n", uid, err)
-		return map[string]interface{}{"error": "認証トークンの生成に失敗しました"}, http.StatusInternalServerError
+		log.Printf("ERROR: Failed to generate session token for UID %s: %v\n", uid, err)
+		return map[string]interface{}{"error": "セッショントークンの生成に失敗しました"}, http.StatusInternalServerError
 	}
 
 	log.Printf("INFO: Twitter OAuth2.0 authentication successful for UID: %s", uid)
 
 	return map[string]interface{}{
-		"message":     "Twitterアカウントでのログインが成功しました",
-		"uid":         uid,
-		"email":       userInfo.Email,
-		"customToken": customToken,
+		"message":      "Twitterアカウントでのログインが成功しました",
+		"uid":          uid,
+		"email":        userInfo.Email,
+		"sessionToken": sessionToken,
 	}, http.StatusOK
 } 
