@@ -34,7 +34,10 @@ func saveVerificationToken(ctx context.Context, token *VerificationToken) error 
 // saveUserDataToFirestore はユーザーデータをFirestoreに保存します
 func saveUserDataToFirestore(ctx context.Context, uid string, userData *UserData) error {
 	// ユーザーデータ用のコレクション名（環境に依存しない固定名）
-	collectionName := "user_data"
+	collectionName := "users"
+	
+	// UIDを設定
+	userData.UID = uid
 	
 	// Firestoreに保存
 	_, err := firestoreClient.Collection(collectionName).Doc(uid).Set(ctx, userData)
@@ -43,6 +46,7 @@ func saveUserDataToFirestore(ctx context.Context, uid string, userData *UserData
 		return err
 	}
 	
-	log.Printf("INFO: User data saved to Firestore for UID: %s", uid)
+	log.Printf("INFO: User data saved to Firestore for UID: %s (UserName: %s, UserColor: %s)", 
+		uid, userData.UserName, userData.UserColor)
 	return nil
 }
