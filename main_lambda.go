@@ -51,6 +51,26 @@ func handler(ctx context.Context, request events.APIGatewayV2HTTPRequest) (event
 		responseData, statusCode = processGitHubAuthRequest(ctx, request)
 	} else if strings.HasPrefix(path, "/api/auth/twitter") && method == "POST" {
 		responseData, statusCode = processTwitterAuthRequest(ctx, request)
+	} else if strings.HasPrefix(path, "/api/user-providers") && method == "GET" {
+		response, err := lambdaUserProvidersHandler(ctx, request)
+		if err != nil {
+			log.Printf("ERROR: Lambda user providers handler error: %v", err)
+			responseData = map[string]interface{}{"error": "Internal server error"}
+			statusCode = http.StatusInternalServerError
+		} else {
+			json.Unmarshal([]byte(response.Body), &responseData)
+			statusCode = response.StatusCode
+		}
+	} else if strings.HasPrefix(path, "/api/user-providers-detail") && method == "GET" {
+		response, err := lambdaUserProvidersDetailHandler(ctx, request)
+		if err != nil {
+			log.Printf("ERROR: Lambda user providers detail handler error: %v", err)
+			responseData = map[string]interface{}{"error": "Internal server error"}
+			statusCode = http.StatusInternalServerError
+		} else {
+			json.Unmarshal([]byte(response.Body), &responseData)
+			statusCode = response.StatusCode
+		}
 	} else if strings.HasPrefix(path, "/api/time") {
 		if method == "POST" {
 			// POST /api/time の処理
