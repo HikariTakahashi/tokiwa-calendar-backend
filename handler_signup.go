@@ -108,6 +108,22 @@ func processSignupRequest(ctx context.Context, req interface{}) (map[string]inte
 
 	log.Printf("INFO: User successfully created. UID: %s\n", userRecord.UID)
 
+	// ユーザーデータを作成してFirestoreに保存
+	userData := &UserData{
+		UserName:  "",
+		UserColor: "#3b82f6",
+		UID:       userRecord.UID,
+		Email:     []EmailProviderInfo{},
+		Google:    []OAuthProviderInfo{},
+		GitHub:    []OAuthProviderInfo{},
+		Twitter:   []OAuthProviderInfo{},
+	}
+	addEmailProvider(userData, cleanEmail, userRecord.UID)
+	
+	if err := saveUserDataToFirestore(ctx, userRecord.UID, userData); err != nil {
+		log.Printf("WARN: Failed to save user data for new email user: %v", err)
+	}
+
 	// 認証トークンを生成
 	verificationToken, err := generateVerificationToken(cleanEmail, userRecord.UID)
 	if err != nil {
