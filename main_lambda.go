@@ -71,6 +71,10 @@ func handler(ctx context.Context, request events.APIGatewayV2HTTPRequest) (event
 			json.Unmarshal([]byte(response.Body), &responseData)
 			statusCode = response.StatusCode
 		}
+	} else if strings.HasPrefix(path, "/email-config") && method == "GET" {
+		responseData, statusCode = checkEmailConfig()
+	} else if strings.HasPrefix(path, "/email-debug") && method == "GET" {
+		responseData, statusCode = checkEmailDebug()
 	} else if strings.HasPrefix(path, "/api/time") {
 		if method == "POST" {
 			// POST /api/time の処理
@@ -111,6 +115,9 @@ func handler(ctx context.Context, request events.APIGatewayV2HTTPRequest) (event
 		}, nil
 	}
 
+	// すべてのレスポンスにCORSヘッダーを追加
+	corsHeaders := getCorsHeaders()
+
 	if responseData == nil {
 		log.Printf("No route matched for method [%s] and path [%s]", request.RequestContext.HTTP.Method, request.RequestContext.HTTP.Path)
 		responseData = map[string]interface{}{"error": "Not Found", "requestedPath": request.RequestContext.HTTP.Path}
@@ -122,7 +129,7 @@ func handler(ctx context.Context, request events.APIGatewayV2HTTPRequest) (event
 		log.Printf("ERROR: Failed to marshal response: %v", err)
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
-			Headers:    getCorsHeaders(),
+			Headers:    corsHeaders,
 			Body:       "{\"error\":\"Failed to process the response\"}",
 		}, nil
 	}
@@ -130,7 +137,7 @@ func handler(ctx context.Context, request events.APIGatewayV2HTTPRequest) (event
 	log.Printf("Responding with status code %d.", statusCode)
 	return events.APIGatewayProxyResponse{
 		StatusCode: statusCode,
-		Headers:    getCorsHeaders(),
+		Headers:    corsHeaders,
 		Body:       string(body),
 	}, nil
 }
