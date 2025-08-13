@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/http" // Added for http.StatusOK
 	"net/smtp"
 	"os"
 	"strings"
@@ -96,13 +97,41 @@ func getEmailConfig() EmailConfig {
 		defaultFromEmail = "noreply@example.com" // フォールバック用
 	}
 	
+	// 送信者アドレスが設定されていない場合は、SMTPユーザー名を使用
+	fromEmail := getEnvOrDefault("FROM_EMAIL", defaultFromEmail)
+	if fromEmail == "" {
+		fromEmail = defaultFromEmail
+	}
+	
+	log.Printf("DEBUG: Email config - FromEmail: %s, SMTPUsername: %s", fromEmail, os.Getenv("SMTP_USERNAME"))
+	
 	return EmailConfig{
 		SMTPHost:     getEnvOrDefault("SMTP_HOST", "smtp.gmail.com"),
 		SMTPPort:     getEnvOrDefault("SMTP_PORT", "587"),
 		SMTPUsername: os.Getenv("SMTP_USERNAME"),
 		SMTPPassword: os.Getenv("SMTP_PASSWORD"),
-		FromEmail:    getEnvOrDefault("FROM_EMAIL", defaultFromEmail),
+		FromEmail:    fromEmail,
 		FromName:     getEnvOrDefault("FROM_NAME", "Tokiwa Calendar"),
+	}
+}
+
+// getEmailConfigForDebug はデバッグ用のメール設定を取得します（パスワードは隠蔽）
+func getEmailConfigForDebug() map[string]interface{} {
+	config := getEmailConfig()
+	
+	// パスワードは長さのみ表示（セキュリティのため）
+	passwordInfo := "設定されていません"
+	if config.SMTPPassword != "" {
+		passwordInfo = fmt.Sprintf("%d文字", len(config.SMTPPassword))
+	}
+	
+	return map[string]interface{}{
+		"smtp_host":     config.SMTPHost,
+		"smtp_port":     config.SMTPPort,
+		"smtp_username": config.SMTPUsername,
+		"smtp_password": passwordInfo,
+		"from_email":    config.FromEmail,
+		"from_name":     config.FromName,
 	}
 }
 
@@ -118,8 +147,11 @@ func getEnvOrDefault(key, defaultValue string) string {
 func sendVerificationEmail(toEmail, verificationToken string) error {
 	config := getEmailConfig()
 	
+	log.Printf("DEBUG: sendVerificationEmail called with toEmail: %s, token length: %d", toEmail, len(verificationToken))
+	
 	// 設定の検証
 	if config.SMTPUsername == "" || config.SMTPPassword == "" {
+		log.Printf("ERROR: SMTP credentials not configured - Username: %s, Password length: %d", config.SMTPUsername, len(config.SMTPPassword))
 		return fmt.Errorf("SMTP認証情報が設定されていません")
 	}
 
@@ -157,6 +189,7 @@ func sendVerificationEmail(toEmail, verificationToken string) error {
 	// メール送信
 	addr := fmt.Sprintf("%s:%s", config.SMTPHost, config.SMTPPort)
 	log.Printf("INFO: Attempting to send email via %s", addr)
+	log.Printf("DEBUG: Message length: %d bytes", len(message))
 	
 	// STARTTLS接続を使用
 	log.Printf("INFO: Using STARTTLS connection")
@@ -166,6 +199,14 @@ func sendVerificationEmail(toEmail, verificationToken string) error {
 		log.Printf("ERROR: Failed to send verification email to %s: %v", toEmail, err)
 		log.Printf("ERROR: SMTP config - Host: %s, Port: %s, Username: %s", 
 			config.SMTPHost, config.SMTPPort, config.SMTPUsername)
+		log.Printf("ERROR: Detailed error type: %T", err)
+		
+		// Lambda環境でのメール送信失敗の詳細ログ
+		if isLambdaEnvironment() {
+			log.Printf("WARN: Lambda environment detected - email sending failed")
+			log.Printf("WARN: This may trigger email verification bypass for user registration")
+		}
+		
 		return fmt.Errorf("メール送信に失敗しました: %v", err)
 	}
 
@@ -177,8 +218,8 @@ func sendVerificationEmail(toEmail, verificationToken string) error {
 
 // sendMail はSTARTTLS接続を使用してメールを送信します
 func sendMail(addr string, auth smtp.Auth, from string, to []string, msg []byte) error {
-	// 通常のTCP接続を確立
-	conn, err := net.Dial("tcp", addr)
+	// タイムアウト付きでTCP接続を確立
+	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
 	if err != nil {
 		return fmt.Errorf("TCP接続に失敗しました: %v", err)
 	}
@@ -192,6 +233,7 @@ func sendMail(addr string, auth smtp.Auth, from string, to []string, msg []byte)
 	defer client.Close()
 	
 	// STARTTLSを開始（さくらメールボックス用に柔軟な設定）
+	log.Printf("DEBUG: Starting STARTTLS negotiation")
 	if err = client.StartTLS(&tls.Config{
 		ServerName:         strings.Split(addr, ":")[0],
 		InsecureSkipVerify: false,
@@ -210,16 +252,22 @@ func sendMail(addr string, auth smtp.Auth, from string, to []string, msg []byte)
 	}); err != nil {
 		return fmt.Errorf("STARTTLSの開始に失敗しました: %v", err)
 	}
+	log.Printf("DEBUG: STARTTLS negotiation completed")
 	
 	// 認証
+	log.Printf("DEBUG: Starting SMTP authentication")
 	if err = client.Auth(auth); err != nil {
 		return fmt.Errorf("SMTP認証に失敗しました: %v", err)
 	}
+	log.Printf("DEBUG: SMTP authentication completed")
 	
 	// 送信者を設定
+	log.Printf("DEBUG: Setting sender address: %s", from)
 	if err = client.Mail(from); err != nil {
+		log.Printf("ERROR: Failed to set sender address '%s': %v", from, err)
 		return fmt.Errorf("送信者の設定に失敗しました: %v", err)
 	}
+	log.Printf("DEBUG: Sender address set successfully")
 	
 	// 受信者を設定
 	for _, recipient := range to {
@@ -247,6 +295,49 @@ func sendMail(addr string, auth smtp.Auth, from string, to []string, msg []byte)
 	return nil
 }
 
+
+
+// checkEmailDebug はメール設定の詳細デバッグ情報を返します
+func checkEmailDebug() (map[string]interface{}, int) {
+	config := getEmailConfig()
+	
+	// 環境変数の詳細情報
+	envInfo := map[string]interface{}{
+		"SMTP_HOST":     os.Getenv("SMTP_HOST"),
+		"SMTP_PORT":     os.Getenv("SMTP_PORT"),
+		"SMTP_USERNAME": os.Getenv("SMTP_USERNAME"),
+		"SMTP_PASSWORD": fmt.Sprintf("%d文字", len(os.Getenv("SMTP_PASSWORD"))),
+		"FROM_EMAIL":    os.Getenv("FROM_EMAIL"),
+		"FROM_NAME":     os.Getenv("FROM_NAME"),
+	}
+	
+	// 設定の妥当性チェック
+	var validationErrors []string
+	
+	if config.SMTPUsername == "" {
+		validationErrors = append(validationErrors, "SMTP_USERNAMEが設定されていません")
+	}
+	if config.SMTPPassword == "" {
+		validationErrors = append(validationErrors, "SMTP_PASSWORDが設定されていません")
+	}
+	if config.FromEmail == "" {
+		validationErrors = append(validationErrors, "FROM_EMAILが設定されていません")
+	}
+	
+	// 送信者アドレスの一致チェック
+	senderMatch := config.SMTPUsername == config.FromEmail
+	
+	return map[string]interface{}{
+		"config":           getEmailConfigForDebug(),
+		"environment":      envInfo,
+		"validation": map[string]interface{}{
+			"errors":        validationErrors,
+			"sender_match":  senderMatch,
+			"is_valid":      len(validationErrors) == 0 && senderMatch,
+		},
+		"recommendation":   "送信者アドレス（FROM_EMAIL）はSMTP認証ユーザー名（SMTP_USERNAME）と一致させる必要があります",
+	}, http.StatusOK
+}
 
 
  
