@@ -49,8 +49,21 @@ func processPostRequest(ctx context.Context, req interface{}) (map[string]interf
 		}
 	}
 
-	// Firestoreで新しいドキュメントID（spaceId）を自動生成
-	newSpaceId := firestoreClient.Collection(firestoreCollectionName).NewDoc().ID
+	// 既存のspaceIdが指定されているかチェック
+	var targetSpaceId string
+	var isUpdate bool
+	
+	if postData.SpaceId != nil && *postData.SpaceId != "" {
+		// 既存のspaceIdが指定されている場合（再同期時）
+		targetSpaceId = *postData.SpaceId
+		isUpdate = true
+		log.Printf("INFO: Updating existing spaceId: %s", targetSpaceId)
+	} else {
+		// 新規作成時
+		targetSpaceId = firestoreClient.Collection(firestoreCollectionName).NewDoc().ID
+		isUpdate = false
+		log.Printf("INFO: Creating new spaceId: %s", targetSpaceId)
+	}
 
 	// Firestoreに保存するドキュメントを作成
 	scheduleDoc := &ScheduleDocument{
@@ -64,20 +77,35 @@ func processPostRequest(ctx context.Context, req interface{}) (map[string]interf
 	// ミドルウェアにより、ログインユーザーの場合のみUIDがセットされている
 	if uid, ok := getUIDFromContext(ctx); ok {
 		scheduleDoc.OwnerUID = uid
-		log.Printf("INFO: Associating new spaceId %s with owner UID %s\n", newSpaceId, uid)
+		if isUpdate {
+			log.Printf("INFO: Updating spaceId %s with owner UID %s\n", targetSpaceId, uid)
+		} else {
+			log.Printf("INFO: Associating new spaceId %s with owner UID %s\n", targetSpaceId, uid)
+		}
 	} else {
-		log.Printf("INFO: Creating new spaceId %s for anonymous user.\n", newSpaceId)
+		if isUpdate {
+			log.Printf("INFO: Updating spaceId %s for anonymous user.\n", targetSpaceId)
+		} else {
+			log.Printf("INFO: Creating new spaceId %s for anonymous user.\n", targetSpaceId)
+		}
 	}
 
-	if err := saveScheduleToFirestore(ctx, newSpaceId, scheduleDoc); err != nil {
+	if err := saveScheduleToFirestore(ctx, targetSpaceId, scheduleDoc); err != nil {
 		log.Printf("ERROR: Failed to save to Firestore: %v\n", err)
 		return map[string]interface{}{"error": "データの保存に失敗しました: " + err.Error()}, http.StatusInternalServerError
 	}
 
-	log.Printf("INFO: Data successfully saved to Firestore. Document ID: %s\n", newSpaceId)
-
-	return map[string]interface{}{
-		"message":   "データは正常に受信され、Firestoreに保存されました。",
-		"spaceId":   newSpaceId,
-	}, http.StatusOK
+	if isUpdate {
+		log.Printf("INFO: Data successfully updated in Firestore. Document ID: %s\n", targetSpaceId)
+		return map[string]interface{}{
+			"message":   "データは正常に更新され、Firestoreに保存されました。",
+			"spaceId":   targetSpaceId,
+		}, http.StatusOK
+	} else {
+		log.Printf("INFO: Data successfully saved to Firestore. Document ID: %s\n", targetSpaceId)
+		return map[string]interface{}{
+			"message":   "データは正常に受信され、Firestoreに保存されました。",
+			"spaceId":   targetSpaceId,
+		}, http.StatusOK
+	}
 }
