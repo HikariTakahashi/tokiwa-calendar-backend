@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -64,10 +65,16 @@ func processSignupRequest(ctx context.Context, req interface{}) (map[string]inte
 	}
 
 	// クライアントから送られてきた暗号化されたパスワードを復号化
+	// まず簡易暗号化方式を試す
 	decryptedPassword, err := decryptPassword(signupData.Password)
 	if err != nil {
-		log.Printf("ERROR: Failed to decrypt password: %v\n", err)
-		return map[string]interface{}{"error": "パスワードの復号化に失敗しました"}, http.StatusBadRequest
+		log.Printf("DEBUG: Simple decryption failed, trying AES-CBC: %v\n", err)
+		// 簡易暗号化が失敗した場合、AES-CBC暗号化を試す
+		decryptedPassword, err = DecryptPassword(signupData.Password)
+		if err != nil {
+			log.Printf("ERROR: Both decryption methods failed: %v\n", err)
+			return map[string]interface{}{"error": "パスワードの復号化に失敗しました"}, http.StatusBadRequest
+		}
 	}
 
 	// メールアドレスの前処理と検証
@@ -84,11 +91,14 @@ func processSignupRequest(ctx context.Context, req interface{}) (map[string]inte
 	}
 
 	// 復号化されたパスワードで強度チェック
+	log.Printf("DEBUG: Checking password strength for password length: %d", len(decryptedPassword))
 	passwordStrength := checkPasswordStrength(decryptedPassword)
 	if !passwordStrength.IsValid {
+		log.Printf("DEBUG: Password strength check failed: %v", passwordStrength.Errors)
 		errorMessage := "パスワードの強度が不足しています: " + strings.Join(passwordStrength.Errors, ", ")
 		return map[string]interface{}{"error": errorMessage}, http.StatusBadRequest
 	}
+	log.Printf("DEBUG: Password strength check passed")
 
 	// Firebase Authenticationでユーザーを作成
 	params := (&auth.UserToCreate{}).
@@ -107,22 +117,6 @@ func processSignupRequest(ctx context.Context, req interface{}) (map[string]inte
 	}
 
 	log.Printf("INFO: User successfully created. UID: %s\n", userRecord.UID)
-
-	// ユーザーデータを作成してFirestoreに保存
-	userData := &UserData{
-		UserName:  "",
-		UserColor: "#3b82f6",
-		UID:       userRecord.UID,
-		Email:     []EmailProviderInfo{},
-		Google:    []OAuthProviderInfo{},
-		GitHub:    []OAuthProviderInfo{},
-		Twitter:   []OAuthProviderInfo{},
-	}
-	addEmailProvider(userData, cleanEmail, userRecord.UID)
-	
-	if err := saveUserDataToFirestore(ctx, userRecord.UID, userData); err != nil {
-		log.Printf("WARN: Failed to save user data for new email user: %v", err)
-	}
 
 	// 認証トークンを生成
 	verificationToken, err := generateVerificationToken(cleanEmail, userRecord.UID)
@@ -148,28 +142,79 @@ func processSignupRequest(ctx context.Context, req interface{}) (map[string]inte
 	}
 
 	// メール設定の検証
+	log.Printf("DEBUG: Starting email configuration validation")
 	if err := validateEmailConfig(); err != nil {
 		log.Printf("ERROR: Email configuration validation failed: %v\n", err)
 		log.Printf("WARN: User created but email configuration is invalid")
 		return map[string]interface{}{
 			"message": "ユーザーが正常に作成されました（メール設定が無効です）",
 			"uid":     userRecord.UID,
+			"debug": map[string]interface{}{
+				"emailConfigError": err.Error(),
+				"emailConfig":      getEmailConfigForDebug(),
+			},
 		}, http.StatusCreated
 	}
+	log.Printf("DEBUG: Email configuration validation passed")
 
 	// 認証メールを送信
+	log.Printf("DEBUG: Starting verification email send to: %s", cleanEmail)
 	if err := sendVerificationEmail(cleanEmail, verificationToken.Token); err != nil {
 		log.Printf("ERROR: Failed to send verification email: %v\n", err)
-		// メール送信に失敗してもユーザー作成は成功しているので、警告として記録
+		
+		// Lambda環境でメール認証スキップが許可されている場合
+		if shouldSkipEmailVerification() {
+			log.Printf("INFO: Lambda environment detected, skipping email verification for user: %s", userRecord.UID)
+			
+			// ユーザーを自動的にメール認証済みとしてマーク
+			if err := markUserAsVerified(ctx, userRecord.UID); err != nil {
+				log.Printf("WARN: Failed to mark user as verified: %v", err)
+			}
+			
+			return map[string]interface{}{
+				"message": "ユーザーが正常に作成されました（Lambda環境のためメール認証をスキップしました）",
+				"uid":     userRecord.UID,
+				"lambdaMode": true,
+				"debug": map[string]interface{}{
+					"emailSendError": err.Error(),
+					"emailConfig":    getEmailConfigForDebug(),
+					"targetEmail":    cleanEmail,
+					"lambdaEnvironment": true,
+				},
+			}, http.StatusCreated
+		}
+		
+		// 通常の環境では警告として記録
 		log.Printf("WARN: User created but verification email could not be sent")
 		return map[string]interface{}{
 			"message": "ユーザーが正常に作成されました（認証メールの送信に失敗しました）",
 			"uid":     userRecord.UID,
+			"debug": map[string]interface{}{
+				"emailSendError": err.Error(),
+				"emailConfig":    getEmailConfigForDebug(),
+				"targetEmail":    cleanEmail,
+			},
 		}, http.StatusCreated
 	}
+	log.Printf("DEBUG: Verification email sent successfully")
 
 	return map[string]interface{}{
 		"message": "ユーザーが正常に作成されました。認証メールをお送りしました。",
 		"uid":     userRecord.UID,
 	}, http.StatusCreated
+}
+
+// markUserAsVerified はユーザーをメール認証済みとしてマークします
+func markUserAsVerified(ctx context.Context, uid string) error {
+	// Firebase Authでユーザーのメール認証状態を更新
+	params := (&auth.UserToUpdate{}).
+		EmailVerified(true)
+	
+	_, err := authClient.UpdateUser(ctx, uid, params)
+	if err != nil {
+		return fmt.Errorf("ユーザーの認証状態の更新に失敗しました: %v", err)
+	}
+	
+	log.Printf("INFO: User %s marked as email verified", uid)
+	return nil
 }
