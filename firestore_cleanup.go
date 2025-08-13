@@ -104,6 +104,12 @@ func cleanupExpiredUnverifiedUsers(ctx context.Context) error {
 		
 		// 未認証ユーザーの場合、削除
 		if !isVerified {
+			// Lambda環境でメール認証スキップが許可されている場合、削除をスキップ
+			if shouldSkipEmailVerification() {
+				log.Printf("INFO: Lambda environment detected, skipping deletion of unverified user: %s (email: %s)", token.UID, token.Email)
+				continue
+			}
+			
 			if err := deleteUnverifiedUser(ctx, token.UID); err != nil {
 				log.Printf("ERROR: Failed to delete unverified user %s: %v", token.UID, err)
 				continue
