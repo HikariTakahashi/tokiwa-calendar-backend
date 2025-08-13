@@ -1,5 +1,3 @@
-// post_transfer.go
-
 package main
 
 // SchedulePostRequest は、POSTリクエストのJSONボディの構造を定義します。
@@ -9,6 +7,7 @@ type SchedulePostRequest struct {
 	StartDate      *string                `json:"startDate,omitempty"`
 	EndDate        *string                `json:"endDate,omitempty"`
 	Events         map[string][]TimeEntry `json:"events"`
+	SpaceId        *string                `json:"spaceId,omitempty"` // 既存のspaceId（再同期時）
 }
 
 // Firestoreに保存する際のキー名を小文字にするため、`firestore`タグを追加

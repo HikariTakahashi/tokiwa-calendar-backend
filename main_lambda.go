@@ -33,6 +33,48 @@ func handler(ctx context.Context, request events.APIGatewayV2HTTPRequest) (event
 		responseData, statusCode = processSignupRequest(ctx, request)
 	} else if strings.HasPrefix(path, "/api/login") && method == "POST" {
 		responseData, statusCode = processLoginRequest(ctx, request)
+	} else if strings.HasPrefix(path, "/api/cleanup") && method == "POST" {
+		responseData, statusCode = ProcessCleanupRequest(ctx, request)
+	} else if strings.HasPrefix(path, "/api/user-data") {
+		response, err := lambdaUserDataHandler(ctx, request)
+		if err != nil {
+			log.Printf("ERROR: Lambda user data handler error: %v", err)
+			responseData = map[string]interface{}{"error": "Internal server error"}
+			statusCode = http.StatusInternalServerError
+		} else {
+			json.Unmarshal([]byte(response.Body), &responseData)
+			statusCode = response.StatusCode
+		}
+	} else if strings.HasPrefix(path, "/api/auth/google") && method == "POST" {
+		responseData, statusCode = processGoogleAuthRequest(ctx, request)
+	} else if strings.HasPrefix(path, "/api/auth/github") && method == "POST" {
+		responseData, statusCode = processGitHubAuthRequest(ctx, request)
+	} else if strings.HasPrefix(path, "/api/auth/twitter") && method == "POST" {
+		responseData, statusCode = processTwitterAuthRequest(ctx, request)
+	} else if strings.HasPrefix(path, "/api/user-providers") && method == "GET" {
+		response, err := lambdaUserProvidersHandler(ctx, request)
+		if err != nil {
+			log.Printf("ERROR: Lambda user providers handler error: %v", err)
+			responseData = map[string]interface{}{"error": "Internal server error"}
+			statusCode = http.StatusInternalServerError
+		} else {
+			json.Unmarshal([]byte(response.Body), &responseData)
+			statusCode = response.StatusCode
+		}
+	} else if strings.HasPrefix(path, "/api/user-providers-detail") && method == "GET" {
+		response, err := lambdaUserProvidersDetailHandler(ctx, request)
+		if err != nil {
+			log.Printf("ERROR: Lambda user providers detail handler error: %v", err)
+			responseData = map[string]interface{}{"error": "Internal server error"}
+			statusCode = http.StatusInternalServerError
+		} else {
+			json.Unmarshal([]byte(response.Body), &responseData)
+			statusCode = response.StatusCode
+		}
+	} else if strings.HasPrefix(path, "/email-config") && method == "GET" {
+		responseData, statusCode = checkEmailConfig()
+	} else if strings.HasPrefix(path, "/email-debug") && method == "GET" {
+		responseData, statusCode = checkEmailDebug()
 	} else if strings.HasPrefix(path, "/api/time") {
 		if method == "POST" {
 			// POST /api/time の処理
@@ -73,6 +115,9 @@ func handler(ctx context.Context, request events.APIGatewayV2HTTPRequest) (event
 		}, nil
 	}
 
+	// すべてのレスポンスにCORSヘッダーを追加
+	corsHeaders := getCorsHeaders()
+
 	if responseData == nil {
 		log.Printf("No route matched for method [%s] and path [%s]", request.RequestContext.HTTP.Method, request.RequestContext.HTTP.Path)
 		responseData = map[string]interface{}{"error": "Not Found", "requestedPath": request.RequestContext.HTTP.Path}
@@ -84,7 +129,7 @@ func handler(ctx context.Context, request events.APIGatewayV2HTTPRequest) (event
 		log.Printf("ERROR: Failed to marshal response: %v", err)
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
-			Headers:    getCorsHeaders(),
+			Headers:    corsHeaders,
 			Body:       "{\"error\":\"Failed to process the response\"}",
 		}, nil
 	}
@@ -92,7 +137,7 @@ func handler(ctx context.Context, request events.APIGatewayV2HTTPRequest) (event
 	log.Printf("Responding with status code %d.", statusCode)
 	return events.APIGatewayProxyResponse{
 		StatusCode: statusCode,
-		Headers:    getCorsHeaders(),
+		Headers:    corsHeaders,
 		Body:       string(body),
 	}, nil
 }
