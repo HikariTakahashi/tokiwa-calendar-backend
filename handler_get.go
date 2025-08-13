@@ -14,6 +14,9 @@ func processGetRequest(ctx context.Context, req interface{}) (map[string]interfa
 		return handleGetRequest(ctx, r)
 	case events.APIGatewayV2HTTPRequest:
 		return handleGetLambdaRequest(ctx, r)
+	case string:
+		// spaceIdが直接渡された場合（Lambda用）
+		return processGetScheduleRequest(ctx, r)
 	default:
 		return map[string]interface{}{"error": "不明なリクエストタイプです"}, http.StatusInternalServerError
 	}
