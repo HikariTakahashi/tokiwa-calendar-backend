@@ -349,13 +349,22 @@ func validateAuthHeader(ctx context.Context, authHeader string) (*auth.Token, er
 	if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
 		return nil, errors.New("invalid authorization header format")
 	}
-	idToken := parts[1]
+	sessionToken := parts[1]
 
-	// Firebase Auth でトークンを検証
-	token, err := authClient.VerifyIDToken(ctx, idToken)
+	log.Printf("DEBUG: validateAuthHeader called with token length: %d", len(sessionToken))
+
+	// セッショントークンを検証
+	userSession, err := validateSessionToken(sessionToken)
 	if err != nil {
-		log.Printf("ERROR: Token validation failed: %v", err)
+		log.Printf("ERROR: Session token validation failed: %v", err)
 		return nil, err
+	}
+
+	log.Printf("DEBUG: Session token validated successfully for UID: %s, Email: %s", userSession.UID, userSession.Email)
+
+	// Firebase auth.Token形式にマッピング（既存のコードとの互換性のため）
+	token := &auth.Token{
+		UID: userSession.UID,
 	}
 
 	return token, nil
@@ -368,6 +377,20 @@ func processUserProvidersRequest(ctx context.Context, token *auth.Token) (map[st
 	if err != nil {
 		log.Printf("ERROR: Failed to get user data for UID %s: %v", token.UID, err)
 		return map[string]interface{}{"error": "ユーザー情報の取得に失敗しました"}, http.StatusInternalServerError
+	}
+	
+	// userDataがnilの場合はデフォルト値を設定
+	if userData == nil {
+		log.Printf("INFO: User data is nil for UID %s, using default values", token.UID)
+		userData = &UserData{
+			UserName:  "",
+			UserColor: "#3b82f6",
+			UID:       token.UID,
+			Email:     []EmailProviderInfo{},
+			Google:    []OAuthProviderInfo{},
+			GitHub:    []OAuthProviderInfo{},
+			Twitter:   []OAuthProviderInfo{},
+		}
 	}
 
 	// プロバイダー情報を抽出
@@ -404,6 +427,20 @@ func processUserProvidersDetailRequest(ctx context.Context, token *auth.Token) (
 	if err != nil {
 		log.Printf("ERROR: Failed to get user data for UID %s: %v", token.UID, err)
 		return map[string]interface{}{"error": "ユーザー情報の取得に失敗しました"}, http.StatusInternalServerError
+	}
+	
+	// userDataがnilの場合はデフォルト値を設定
+	if userData == nil {
+		log.Printf("INFO: User data is nil for UID %s, using default values", token.UID)
+		userData = &UserData{
+			UserName:  "",
+			UserColor: "#3b82f6",
+			UID:       token.UID,
+			Email:     []EmailProviderInfo{},
+			Google:    []OAuthProviderInfo{},
+			GitHub:    []OAuthProviderInfo{},
+			Twitter:   []OAuthProviderInfo{},
+		}
 	}
 	
 	log.Printf("DEBUG: User data retrieved successfully, starting to process providers")
@@ -913,7 +950,18 @@ func getUserDataByUID(ctx context.Context, uid string) (*UserData, error) {
 		return &userData, nil
 	}
 
-	return nil, fmt.Errorf("user data not found for UID: %s", uid)
+	// ユーザーデータが見つからない場合はデフォルト値を返す
+	log.Printf("INFO: User data not found for UID: %s, returning default values", uid)
+	defaultUserData := &UserData{
+		UserName:  "",
+		UserColor: "#3b82f6",
+		UID:       uid,
+		Email:     []EmailProviderInfo{},
+		Google:    []OAuthProviderInfo{},
+		GitHub:    []OAuthProviderInfo{},
+		Twitter:   []OAuthProviderInfo{},
+	}
+	return defaultUserData, nil
 }
 
 
