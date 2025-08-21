@@ -1,125 +1,107 @@
-# ToKiWa-calendar
+# 概要
 
-## 概要
-このプロジェクトは、フロントエンドとバックエンドで構成されるカレンダーアプリケーションです。
+「部屋を丸ごとリマインダーにする」タスク管理に特化したカレンダーアプリ、『TokiWa Calendar』のレポジトリです。
+従来のタスク管理ツールが抱える「通知の見逃し」「タスクの後回し」という根源的な課題に対し、ソフトウェアとハードウェアの融合で解決する新しいタスク管理システムです。デジタル上のタスクを現実世界の「光・音・モノの動き」に変換し、ユーザーの物理環境に直接働きかけることで、確実な行動を促します。
+『ToKiWa calendar』は、ソフトウェアによる「認知」のサポートと、ハードウェアによる物理的な「行動喚起」を組み合わせ、“わかっていても行動できない”という課題（意図と行動の乖離）を解消します。タスク管理に「環境そのものをデザインする」という新たな選択肢を提示します。
+## 関連URL
+YouTube動画
+https://www.youtube.com/watch?v=OgA2TAeWcS0
+URL
+https://www.tokiwa-calendar.com/welcome
+# 導入準備
+## 前提
 
-### リポジトリ
-動作には、以下の二つのリポジトリが必要です。
+動作には以上の~~四つ~~三つのレポジトリのインストールが必要です
 
-* **フロントエンド**: [https://github.com/HikariTakahashi/simple-calendar-frontend](https://github.com/HikariTakahashi/simple-calendar-frontend)
-* **バックエンド**: [https://github.com/HikariTakahashi/simple-calendar-backend](https://github.com/HikariTakahashi/simple-calendar-backend) (このリポジトリ)
+**フロントエンド**:https://github.com/HikariTakahashi/tokiwa-calendar-frontend <br>
+**バックエンド**:https://github.com/HikariTakahashi/tokiwa-calendar-backend ← いまここ <br>
+**ハードウェア**:https://github.com/HikariTakahashi/tokiwa-calendar-hardware <br>
+~~**DiscordBot**~~:https://github.com/HikariTakahashi/tokiwa-calendar-discordbot
 
----
+## 起動準備(フロントエンド)
 
-## 重要なドキュメント
+1. レポジトリのクローン
 
-この`README.md`は、開発環境をセットアップし、アプリケーションを起動するためのクイックスタートガイドです。
-
-APIのエンドポイント仕様、各ファイルの責任範囲、詳細なテスト手順など、**プロジェクトの技術的な仕様はすべて以下のドキュメントに記載されています。** 開発を始める前に必ずご一読ください。
-
-> **参照先**: `ToKiWa-calendar バックエンド仕様書` (チーム内で共有)
-
----
-
-## 1. ローカル開発環境のセットアップ
-
-### 1.1. バックエンド (このリポジトリ)
-#### ① レポジトリのクローン
 ```bash
-git clone [https://github.com/HikariTakahashi/simple-calendar-backend.git](https://github.com/HikariTakahashi/simple-calendar-backend.git)
-cd simple-calendar-backend
+git clone https://github.com/HikariTakahashi/simple-calendar-frontend.git
 ```
 
-#### ② 環境変数の設定
-プロジェクトのルートに `.env` ファイルを作成し、Firebase管理者から共有された認証情報を設定します。
+2. 必要なもののインストール
 
-```env
-# Firebaseのサービスアカウントキー(JSON)の"内容"をシングルクォートで囲って貼り付け
-GOOGLE_APPLICATION_CREDENTIALS_JSON='{ ... }'
-
-# FirebaseプロジェクトのWeb APIキー
-FIREBASE_API_KEY="AIzaSy..."
-
-# AES暗号化・復号化で使用するキー (現在は未使用)
-ENCRYPTION_KEY="your-secret-encryption-key-32-chars-long!"
-```
-> **Note**: これらの設定が正しく行われていない場合、サーバーは起動時またはデータアクセス時にエラーを発生させます。
-
-### 1.2. フロントエンド
-#### ① レポジトリのクローン
 ```bash
-git clone [https://github.com/HikariTakahashi/simple-calendar-frontend.git](https://github.com/HikariTakahashi/simple-calendar-frontend.git)
+// フロントエンドのプロジェクトに移動(いつもの開き方でOK)
 cd simple-calendar-frontend
-```
-#### ② 依存パッケージのインストール
-```bash
+
+// Node.jsのパッケージ管理システムをインストール
 npm install
 ```
 
----
+3. .env ファイルの書き込み
+   .env ファイルの中身を担当者から貰ってください
+   注:アップデート等により.env ファイルは頻繁に変更されるため、こまめに確認してください。
 
-## 2. 開発サーバーの起動
+## 起動準備(バックエンド)
 
-### 2.1. バックエンドサーバー (Go)
-バックエンドのプロジェクトディレクトリで、以下のコマンドを実行します。
+1. レポジトリのクローン
 
 ```bash
+git clone https://github.com/HikariTakahashi/tokiwa-calendar-backend.git
+```
+
+2. バックエンドのプロジェクトに移動(個人のいつもの開き方で OK)
+
+```bash
+cd tokiwa-calendar-backend
+```
+
+3. .env ファイルの書き込み
+   .env ファイルの中身を担当者から貰ってください
+   注:アップデート等により.env ファイルは頻繁に変更されるため、こまめに確認してください。
+
+## 起動準備(ハードウェア)
+1. PlatformIO IDEの導入
+VSCode の「拡張機能」から PlatformIO IDE を検索してインストール
+2. レポジトリのクローン
+```bash
+git clone https://github.com/HikariTakahashi/tokiwa-calendar-hardware.git
+```
+3. ハードウェアのプロジェクトに移動(個人のいつもの開き方でOK)
+```bash
+cd tokiwa-calendar-hardware
+```
+3. PCにESP32C6を接続
+4. ファームウェアを書き込む
+　コンパイルボタンを押す
+5. 外部から操作したい端末でアクセスポイントに接続
+```bash 
+http://192.168.4.1/
+```
+3. ssidとパスワードを入力しwifiに接続
+　シリアルモニターを確認
+　```bash
+　http://<シリアルモニターに表示されたIPアドレス>/control
+```
+
+## 開発サーバーの起動
+
+1. バックエンド起動（Go 言語）
+
+```bash
+// バックエンドのターミナルで実行
 go run --tags=local .
 ```
-* `--tags=local` フラグは、ローカル開発用の設定を有効にするために**必須**です。
-* サーバーは `http://localhost:8080` で起動します。
 
-### 2.2. フロントエンドサーバー (Nuxt.js)
-フロントエンドのプロジェクトディレクトリで、以下のコマンドを実行します。
+注: 以前は `go run main.go` でしたが、ファイル分割により `go run .`に変更されました。プロジェクト内のすべての .go ファイルがビルド対象になります。
+注 2: `go run .`からさらに`go run --tags=local .`に変更されました。
+
+2. フロントエンド起動（Nuxt.js）
 
 ```bash
+// フロントエンドのターミナルで実行
 npm run dev
 ```
-* 開発用のサーバーが `http://localhost:3000` で起動します。
 
----
+3. 開発用のサーバーにアクセス
 
-## 3. 本番環境へのデプロイ (AWS Lambda)
-本番環境であるAWS Lambdaへアプリケーションをデプロイする手順です。
 
-### 3.1. 実行ファイルのビルド
-Lambda上で動作する実行ファイル(`bootstrap`)を生成します。
 
-* **PowerShell (Windows) の場合**
-    ```powershell
-    $env:GOOS="linux"; $env:GOARCH="arm64"; go build -tags lambda.norpc -o bootstrap .
-    ```
-* **Mac / Linux の場合**
-    ```bash
-    GOOS=linux GOARCH=amd64 go build -tags lambda.norpc -o bootstrap .
-    ```
-
-### 3.2. Zip化
-生成された`bootstrap`ファイルをZip形式で圧縮します。
-
-* **PowerShell (Windows) の場合**
-    ```powershell
-    Compress-Archive -Path .\bootstrap -DestinationPath .\bootstrap.zip -Force
-    ```
-* **Mac / Linux の場合**
-    ```bash
-    zip bootstrap.zip bootstrap
-    ```
-
-### 3.3. AWS Lambdaへのアップロード
-1.  AWS マネジメントコンソールで対象のLambda関数を開きます。
-2.  「コードソース」セクションから「アップロード元」>「.zipファイル」を選択します。
-3.  作成した`bootstrap.zip`をアップロードします。
-4.  デプロイ完了後、「テスト」タブからテストイベントを実行し、成功することを確認します。
-
----
-
-## 4. APIテストについて
-VSCodeの拡張機能「Thunder Client」を使用することで、フロントエンドを介さずにバックエンドAPIの動作を直接テストできます。
-
-各エンドポイントの具体的なテスト手順（リクエストボディ、ヘッダー、結果の判断など）については、**バックエンド仕様書**の「APIテストガイド」の章を詳しく参照してください。
-
-### ステータスコードの基本的な切り分け
-* `2xx` (成功): バックエンドは正常にリクエストを処理しています。
-* `4xx` (クライアントエラー): リクエスト内容に問題があります (例: 必須項目不足、認証エラー)。多くの場合、フロントエンド側の問題です。
-* `5xx` (サーバーエラー): サーバー内部で予期せぬエラーが発生しました。バックエンド側のコードやインフラの問題です。
