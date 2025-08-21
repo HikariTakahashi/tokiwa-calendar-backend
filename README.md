@@ -4,10 +4,10 @@
 従来のタスク管理ツールが抱える「通知の見逃し」「タスクの後回し」という根源的な課題に対し、ソフトウェアとハードウェアの融合で解決する新しいタスク管理システムです。デジタル上のタスクを現実世界の「光・音・モノの動き」に変換し、ユーザーの物理環境に直接働きかけることで、確実な行動を促します。
 『ToKiWa calendar』は、ソフトウェアによる「認知」のサポートと、ハードウェアによる物理的な「行動喚起」を組み合わせ、“わかっていても行動できない”という課題（意図と行動の乖離）を解消します。タスク管理に「環境そのものをデザインする」という新たな選択肢を提示します。
 ## 関連URL
-YouTube動画
-https://www.youtube.com/watch?v=OgA2TAeWcS0
-URL
-https://www.tokiwa-calendar.com/welcome
+YouTube動画:
+https://www.youtube.com/watch?v=OgA2TAeWcS0 <br>
+URL:
+https://www.tokiwa-calendar.com/welcome <br>
 # 導入準備
 ## 前提
 
