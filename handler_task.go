@@ -306,6 +306,13 @@ func getExistingTaskData(ctx context.Context, client *firestore.Client, uid stri
 	for date, tasksData := range eventsMap {
 		log.Printf("DEBUG: Processing date %s, tasksData: %+v", date, tasksData)
 		
+		// null値の場合は空の配列を設定
+		if tasksData == nil {
+			log.Printf("DEBUG: tasksData is null for date %s, setting empty array", date)
+			result[date] = []TaskSlot{}
+			continue
+		}
+		
 		tasksArray, ok := tasksData.([]interface{})
 		if !ok {
 			log.Printf("DEBUG: Failed to convert tasksData to array for date %s", date)
