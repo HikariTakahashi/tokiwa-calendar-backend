@@ -25,10 +25,17 @@ type TaskSlot struct {
 	Order       int    `json:"order"`
 }
 
+// NotificationSlot 通知スロットの構造体
+type NotificationSlot struct {
+	Time  string `json:"time"`
+	Order int    `json:"order"`
+}
+
 // TaskSaveRequest タスク保存リクエストの構造体
 type TaskSaveRequest struct {
-	UserUID string                    `json:"useruid"`
-	Events  map[string][]TaskSlot `json:"events"`
+	UserUID       string                           `json:"useruid"`
+	Events        map[string][]TaskSlot            `json:"events"`
+	Notifications map[string][]NotificationSlot    `json:"notifications,omitempty"`
 }
 
 // TaskSaveResponse タスク保存レスポンスの構造体
@@ -40,10 +47,11 @@ type TaskSaveResponse struct {
 
 // TaskGetResponse タスク取得レスポンスの構造体
 type TaskGetResponse struct {
-	Events  map[string][]TaskSlot `json:"events"`
-	Message string                `json:"message"`
-	Success bool                  `json:"success"`
-	Error   string                `json:"error,omitempty"`
+	Events        map[string][]TaskSlot         `json:"events"`
+	Notifications map[string][]NotificationSlot `json:"notifications"`
+	Message       string                         `json:"message"`
+	Success       bool                           `json:"success"`
+	Error         string                         `json:"error,omitempty"`
 }
 
 // handleTaskSave タスク保存ハンドラー
@@ -96,6 +104,12 @@ func handleTaskSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// デバッグログを追加
+	log.Printf("DEBUG: Received task save request for UID: %s", uid)
+	log.Printf("DEBUG: Request events: %+v", request.Events)
+	log.Printf("DEBUG: Request notifications: %+v", request.Notifications)
+	log.Printf("DEBUG: Request UserUID: %s", request.UserUID)
+
 	// Firestoreクライアントを取得
 	ctx := context.Background()
 	client := firestoreClient
@@ -119,7 +133,7 @@ func handleTaskSave(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// タスクデータを保存
-	if err := saveTaskDataToFirestore(ctx, client, uid, request.Events); err != nil {
+	if err := saveTaskDataToFirestore(ctx, client, uid, request.Events, request.Notifications); err != nil {
 		log.Printf("Failed to save task data: %v", err)
 		response := TaskSaveResponse{
 			Message: "タスクの保存に失敗しました",
@@ -216,11 +230,30 @@ func handleTaskGet(w http.ResponseWriter, r *http.Request) {
 	log.Printf("DEBUG: Task data retrieved successfully for UID: %s, events count: %d", uid, len(events))
 	log.Printf("DEBUG: Events data: %+v", events)
 
+	// 通知データを取得
+	log.Printf("DEBUG: Getting notification data for UID: %s", uid)
+	notifications, err := getExistingNotificationData(ctx, client, uid)
+	if err != nil {
+		log.Printf("Failed to get notification data: %v", err)
+		response := TaskGetResponse{
+			Message: "通知データの取得に失敗しました",
+			Success: false,
+			Error:   err.Error(),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+		return
+	}
+
+	log.Printf("DEBUG: Notification data retrieved successfully for UID: %s, notifications count: %d", uid, len(notifications))
+	log.Printf("DEBUG: Notifications data: %+v", notifications)
+
 	// 成功レスポンス
 	response := TaskGetResponse{
-		Events:  events,
-		Message: "タスクデータを正常に取得しました",
-		Success: true,
+		Events:        events,
+		Notifications: notifications,
+		Message:       "タスクデータを正常に取得しました",
+		Success:       true,
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
@@ -228,7 +261,7 @@ func handleTaskGet(w http.ResponseWriter, r *http.Request) {
 }
 
 // saveTaskDataToFirestore Firestoreにタスクデータを保存
-func saveTaskDataToFirestore(ctx context.Context, client *firestore.Client, uid string, events map[string][]TaskSlot) error {
+func saveTaskDataToFirestore(ctx context.Context, client *firestore.Client, uid string, events map[string][]TaskSlot, notifications map[string][]NotificationSlot) error {
 	log.Printf("DEBUG: saveTaskDataToFirestore called for UID %s", uid)
 	
 	// 既存のタスクデータを取得
@@ -237,20 +270,37 @@ func saveTaskDataToFirestore(ctx context.Context, client *firestore.Client, uid 
 		return fmt.Errorf("failed to get existing task data: %v", err)
 	}
 
+	// 既存の通知データを取得
+	existingNotifications, err := getExistingNotificationData(ctx, client, uid)
+	if err != nil {
+		return fmt.Errorf("failed to get existing notification data: %v", err)
+	}
+
 	// 新しいイベントデータを既存データにマージ
 	for date, tasks := range events {
 		existingTasks[date] = tasks
 	}
 
+	// 新しい通知データを既存データにマージ（nilチェックを追加）
+	if notifications != nil && len(notifications) > 0 {
+		for date, notifs := range notifications {
+			if len(notifs) > 0 {
+				existingNotifications[date] = notifs
+			}
+		}
+	}
+
 	log.Printf("DEBUG: Saving task data to Firestore for UID %s", uid)
 	log.Printf("DEBUG: Task data to save: %+v", existingTasks)
+	log.Printf("DEBUG: Notification data to save: %+v", existingNotifications)
 
 	// Firestoreに保存
 	docRef := client.Collection("task").Doc(uid)
 	_, err = docRef.Set(ctx, map[string]interface{}{
-		"events":    existingTasks,
-		"updatedAt": time.Now(),
-		"uid":       uid,
+		"events":        existingTasks,
+		"notifications": existingNotifications,
+		"updatedAt":     time.Now(),
+		"uid":           uid,
 	})
 	if err != nil {
 		log.Printf("ERROR: Failed to save task data to Firestore: %v", err)
@@ -384,6 +434,102 @@ func getExistingTaskData(ctx context.Context, client *firestore.Client, uid stri
 		}
 		result[date] = tasks
 		log.Printf("DEBUG: Final result for date %s: %+v", date, tasks)
+	}
+
+	log.Printf("DEBUG: Final result map: %+v", result)
+	return result, nil
+}
+
+// getExistingNotificationData 既存の通知データを取得
+func getExistingNotificationData(ctx context.Context, client *firestore.Client, uid string) (map[string][]NotificationSlot, error) {
+	docRef := client.Collection("task").Doc(uid)
+	doc, err := docRef.Get(ctx)
+	if err != nil {
+		// デバッグ情報を出力
+		log.Printf("DEBUG: getExistingNotificationData error for UID %s: %v", uid, err)
+		
+		// ドキュメントが存在しない場合は空のマップを返す
+		if status.Code(err) == codes.NotFound || strings.Contains(err.Error(), "NotFound") || err == iterator.Done {
+			log.Printf("DEBUG: Document not found for UID %s, returning empty map", uid)
+			return make(map[string][]NotificationSlot), nil
+		}
+		return nil, err
+	}
+
+	var data map[string]interface{}
+	if err := doc.DataTo(&data); err != nil {
+		log.Printf("DEBUG: Failed to convert document data: %v", err)
+		return nil, err
+	}
+
+	log.Printf("DEBUG: Raw Firestore data for UID %s: %+v", uid, data)
+
+	// notificationsフィールドを取得
+	notificationsData, ok := data["notifications"]
+	if !ok {
+		log.Printf("DEBUG: No notifications field found in document for UID %s", uid)
+		return make(map[string][]NotificationSlot), nil
+	}
+
+	log.Printf("DEBUG: Notifications data for UID %s: %+v", uid, notificationsData)
+
+	// 型アサーション
+	notificationsMap, ok := notificationsData.(map[string]interface{})
+	if !ok {
+		return make(map[string][]NotificationSlot), nil
+	}
+
+	// NotificationSlotの配列に変換
+	result := make(map[string][]NotificationSlot)
+	for date, notifsData := range notificationsMap {
+		log.Printf("DEBUG: Processing date %s, notifsData: %+v", date, notifsData)
+		
+		// null値の場合は空の配列を設定
+		if notifsData == nil {
+			log.Printf("DEBUG: notifsData is null for date %s, setting empty array", date)
+			result[date] = []NotificationSlot{}
+			continue
+		}
+		
+		notifsArray, ok := notifsData.([]interface{})
+		if !ok {
+			log.Printf("DEBUG: Failed to convert notifsData to array for date %s", date)
+			continue
+		}
+
+		var notifs []NotificationSlot
+		for i, notifData := range notifsArray {
+			log.Printf("DEBUG: Processing notification %d for date %s: %+v", i, date, notifData)
+			notifMap, ok := notifData.(map[string]interface{})
+			if !ok {
+				continue
+			}
+
+			notif := NotificationSlot{}
+			log.Printf("DEBUG: Notification map for date %s, notification %d: %+v", date, i, notifMap)
+			
+			// フィールド名の大文字小文字を考慮して取得
+			if time, ok := notifMap["time"].(string); ok {
+				notif.Time = time
+				log.Printf("DEBUG: Set time: %s", time)
+			} else if time, ok := notifMap["Time"].(string); ok {
+				notif.Time = time
+				log.Printf("DEBUG: Set Time: %s", time)
+			}
+			
+			if order, ok := notifMap["order"].(float64); ok {
+				notif.Order = int(order)
+				log.Printf("DEBUG: Set order: %d", int(order))
+			} else if order, ok := notifMap["Order"].(float64); ok {
+				notif.Order = int(order)
+				log.Printf("DEBUG: Set Order: %d", int(order))
+			}
+
+			log.Printf("DEBUG: Final notification object: %+v", notif)
+			notifs = append(notifs, notif)
+		}
+		result[date] = notifs
+		log.Printf("DEBUG: Final result for date %s: %+v", date, notifs)
 	}
 
 	log.Printf("DEBUG: Final result map: %+v", result)
