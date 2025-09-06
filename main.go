@@ -334,6 +334,8 @@ func apiRouter(w http.ResponseWriter, r *http.Request) {
 		handleGitHubAuthRequest(w, r)
 	} else if strings.HasPrefix(r.URL.Path, "/api/auth/twitter") {
 		handleTwitterAuthRequest(w, r)
+	} else if strings.HasPrefix(r.URL.Path, "/api/user-profile") {
+		authMiddleware(http.HandlerFunc(handleUserProfileRequest)).ServeHTTP(w, r)
 	} else if strings.HasPrefix(r.URL.Path, "/api/user-providers-detail") {
 		authMiddleware(http.HandlerFunc(handleUserProvidersDetailRequest)).ServeHTTP(w, r)
 	} else if strings.HasPrefix(r.URL.Path, "/api/user-providers") {
