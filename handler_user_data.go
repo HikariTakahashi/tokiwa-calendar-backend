@@ -57,6 +57,16 @@ type UserProvidersResponse struct {
 	Error     string   `json:"error,omitempty"`
 }
 
+// UserProfileResponse は統合されたユーザープロフィール情報のレスポンス構造体です
+type UserProfileResponse struct {
+	UserName  string           `json:"userName,omitempty"`
+	UserColor string           `json:"userColor,omitempty"`
+	Providers []string         `json:"providers,omitempty"`
+	ProviderDetails []ProviderDetail `json:"providerDetails,omitempty"`
+	Message   string           `json:"message,omitempty"`
+	Error     string           `json:"error,omitempty"`
+}
+
 // LinkAccountRequest はアカウントリンクリクエストの構造体です
 type LinkAccountRequest struct {
 	Provider   string `json:"provider"`
@@ -372,7 +382,7 @@ func validateAuthHeader(ctx context.Context, authHeader string) (*auth.Token, er
 
 // processUserProvidersRequest はユーザープロバイダー情報取得リクエストを処理します
 func processUserProvidersRequest(ctx context.Context, token *auth.Token) (map[string]interface{}, int) {
-	// Firestoreからユーザーデータを取得
+	// データベースからユーザーデータを取得
 	userData, err := getUserDataByUID(ctx, token.UID)
 	if err != nil {
 		log.Printf("ERROR: Failed to get user data for UID %s: %v", token.UID, err)
@@ -393,23 +403,33 @@ func processUserProvidersRequest(ctx context.Context, token *auth.Token) (map[st
 		}
 	}
 
-	// プロバイダー情報を抽出
+	log.Printf("DEBUG: User data retrieved from database")
+	log.Printf("DEBUG: Email providers count: %d", len(userData.Email))
+	log.Printf("DEBUG: Google providers count: %d", len(userData.Google))
+	log.Printf("DEBUG: GitHub providers count: %d", len(userData.GitHub))
+	log.Printf("DEBUG: Twitter providers count: %d", len(userData.Twitter))
+
+	// プロバイダー情報を抽出（データベースから）
 	var providers []string
 	
 	// メールアドレスプロバイダー
 	if len(userData.Email) > 0 {
 		providers = append(providers, "password")
+		log.Printf("DEBUG: Added password provider")
 	}
 	
 	// OAuthプロバイダー
 	if len(userData.Google) > 0 {
 		providers = append(providers, "google.com")
+		log.Printf("DEBUG: Added Google provider")
 	}
 	if len(userData.GitHub) > 0 {
 		providers = append(providers, "github.com")
+		log.Printf("DEBUG: Added GitHub provider")
 	}
 	if len(userData.Twitter) > 0 {
 		providers = append(providers, "twitter.com")
+		log.Printf("DEBUG: Added Twitter provider")
 	}
 
 	log.Printf("INFO: User providers retrieved for UID: %s, providers: %v", token.UID, providers)
@@ -422,7 +442,7 @@ func processUserProvidersRequest(ctx context.Context, token *auth.Token) (map[st
 func processUserProvidersDetailRequest(ctx context.Context, token *auth.Token) (map[string]interface{}, int) {
 	log.Printf("DEBUG: processUserProvidersDetailRequest called for UID: %s", token.UID)
 	
-	// Firestoreからユーザーデータを取得
+	// データベースからユーザーデータを取得
 	userData, err := getUserDataByUID(ctx, token.UID)
 	if err != nil {
 		log.Printf("ERROR: Failed to get user data for UID %s: %v", token.UID, err)
@@ -443,13 +463,13 @@ func processUserProvidersDetailRequest(ctx context.Context, token *auth.Token) (
 		}
 	}
 	
-	log.Printf("DEBUG: User data retrieved successfully, starting to process providers")
+	log.Printf("DEBUG: User data retrieved from database")
 	log.Printf("DEBUG: Email providers count: %d", len(userData.Email))
 	log.Printf("DEBUG: Google providers count: %d", len(userData.Google))
 	log.Printf("DEBUG: GitHub providers count: %d", len(userData.GitHub))
 	log.Printf("DEBUG: Twitter providers count: %d", len(userData.Twitter))
 
-	// プロバイダー詳細情報を抽出
+	// プロバイダー詳細情報を抽出（データベースから）
 	var providerDetails []ProviderDetail
 	
 	// メールアドレスプロバイダー
@@ -461,6 +481,7 @@ func processUserProvidersDetailRequest(ctx context.Context, token *auth.Token) (
 				DisplayName: "メールアドレス",
 				IsLinked:    true,
 			})
+			log.Printf("DEBUG: Added email provider - Email: %s", emailInfo.EmailAddress)
 		}
 	}
 	
@@ -473,6 +494,7 @@ func processUserProvidersDetailRequest(ctx context.Context, token *auth.Token) (
 				DisplayName: "Google",
 				IsLinked:    true,
 			})
+			log.Printf("DEBUG: Added Google provider - Email: %s", googleInfo.EmailAddress)
 		}
 	}
 	
@@ -485,6 +507,7 @@ func processUserProvidersDetailRequest(ctx context.Context, token *auth.Token) (
 				DisplayName: "GitHub",
 				IsLinked:    true,
 			})
+			log.Printf("DEBUG: Added GitHub provider - Email: %s", githubInfo.EmailAddress)
 		}
 	}
 	
@@ -497,16 +520,11 @@ func processUserProvidersDetailRequest(ctx context.Context, token *auth.Token) (
 				DisplayName: "Twitter",
 				IsLinked:    true,
 			})
+			log.Printf("DEBUG: Added Twitter provider - Email: %s", twitterInfo.EmailAddress)
 		}
 	}
 
 	log.Printf("INFO: User provider details retrieved for UID: %s, providers: %d", token.UID, len(providerDetails))
-	
-	// デバッグ用：詳細情報の内容をログ出力
-	for i, detail := range providerDetails {
-		log.Printf("DEBUG: Provider detail %d - Provider: %s, Email: %s, DisplayName: %s, IsLinked: %v", 
-			i+1, detail.Provider, detail.Email, detail.DisplayName, detail.IsLinked)
-	}
 	
 	result := map[string]interface{}{
 		"providers": providerDetails,
@@ -514,6 +532,146 @@ func processUserProvidersDetailRequest(ctx context.Context, token *auth.Token) (
 	
 	log.Printf("DEBUG: Returning result: %+v", result)
 	return result, http.StatusOK
+}
+
+// processUserProfileRequest は統合されたユーザープロフィール情報取得リクエストを処理します
+func processUserProfileRequest(ctx context.Context, token *auth.Token) (map[string]interface{}, int) {
+	log.Printf("DEBUG: processUserProfileRequest called for UID: %s", token.UID)
+	
+	// 1. データベースからユーザーデータを取得
+	userData, err := getUserDataByUID(ctx, token.UID)
+	if err != nil {
+		log.Printf("WARN: Failed to get user data for UID %s: %v", token.UID, err)
+		// ユーザーデータが存在しない場合はデフォルト値を設定
+		userData = &UserData{
+			UserName:  "",
+			UserColor: "#3b82f6",
+			UID:       token.UID,
+			Email:     []EmailProviderInfo{},
+			Google:    []OAuthProviderInfo{},
+			GitHub:    []OAuthProviderInfo{},
+			Twitter:   []OAuthProviderInfo{},
+		}
+	}
+	
+	log.Printf("DEBUG: User data retrieved from database")
+	log.Printf("DEBUG: UserName: %s, UserColor: %s", userData.UserName, userData.UserColor)
+	log.Printf("DEBUG: Email providers count: %d", len(userData.Email))
+	log.Printf("DEBUG: Google providers count: %d", len(userData.Google))
+	log.Printf("DEBUG: GitHub providers count: %d", len(userData.GitHub))
+	log.Printf("DEBUG: Twitter providers count: %d", len(userData.Twitter))
+
+	// 2. プロバイダー一覧を抽出（データベースから）
+	var providers []string
+	var providerDetails []ProviderDetail
+	
+	// メールアドレスプロバイダー
+	if len(userData.Email) > 0 {
+		providers = append(providers, "password")
+		for _, emailInfo := range userData.Email {
+			providerDetails = append(providerDetails, ProviderDetail{
+				Provider:    "password",
+				Email:       emailInfo.EmailAddress,
+				DisplayName: "メールアドレス",
+				IsLinked:    true,
+			})
+			log.Printf("DEBUG: Added email provider - Email: %s", emailInfo.EmailAddress)
+		}
+	}
+	
+	// Googleプロバイダー
+	if len(userData.Google) > 0 {
+		providers = append(providers, "google.com")
+		for _, googleInfo := range userData.Google {
+			providerDetails = append(providerDetails, ProviderDetail{
+				Provider:    "google.com",
+				Email:       googleInfo.EmailAddress,
+				DisplayName: "Google",
+				IsLinked:    true,
+			})
+			log.Printf("DEBUG: Added Google provider - Email: %s", googleInfo.EmailAddress)
+		}
+	}
+	
+	// GitHubプロバイダー
+	if len(userData.GitHub) > 0 {
+		providers = append(providers, "github.com")
+		for _, githubInfo := range userData.GitHub {
+			providerDetails = append(providerDetails, ProviderDetail{
+				Provider:    "github.com",
+				Email:       githubInfo.EmailAddress,
+				DisplayName: "GitHub",
+				IsLinked:    true,
+			})
+			log.Printf("DEBUG: Added GitHub provider - Email: %s", githubInfo.EmailAddress)
+		}
+	}
+	
+	// Twitterプロバイダー
+	if len(userData.Twitter) > 0 {
+		providers = append(providers, "twitter.com")
+		for _, twitterInfo := range userData.Twitter {
+			providerDetails = append(providerDetails, ProviderDetail{
+				Provider:    "twitter.com",
+				Email:       twitterInfo.EmailAddress,
+				DisplayName: "Twitter",
+				IsLinked:    true,
+			})
+			log.Printf("DEBUG: Added Twitter provider - Email: %s", twitterInfo.EmailAddress)
+		}
+	}
+
+	log.Printf("INFO: User profile retrieved for UID: %s, providers: %d", token.UID, len(providers))
+	
+	result := map[string]interface{}{
+		"userName":        userData.UserName,
+		"userColor":       userData.UserColor,
+		"providers":       providers,
+		"providerDetails": providerDetails,
+	}
+	
+	log.Printf("DEBUG: Returning integrated result: %+v", result)
+	return result, http.StatusOK
+}
+
+// handleUserProfileRequest は統合されたユーザープロフィール情報取得リクエストのエントリーポイントです
+func handleUserProfileRequest(w http.ResponseWriter, r *http.Request) {
+	var result map[string]interface{}
+	var statusCode int
+
+	// 認証情報の取得 - セッショントークン用の構造体からUIDを取得
+	tokenValue := r.Context().Value("token")
+	if tokenValue == nil {
+		log.Printf("ERROR: User not authenticated - no token in context")
+		result = map[string]interface{}{"error": "認証が必要です"}
+		statusCode = http.StatusUnauthorized
+	} else {
+		// セッショントークン用のmockToken構造体からUIDを取得
+		mockToken, ok := tokenValue.(struct{ UID string })
+		if !ok {
+			log.Printf("ERROR: Invalid token type in context")
+			result = map[string]interface{}{"error": "認証が必要です"}
+			statusCode = http.StatusUnauthorized
+		} else {
+			// Firebase auth.Token形式にマッピング（既存のコードとの互換性のため）
+			token := &auth.Token{
+				UID: mockToken.UID,
+			}
+			log.Printf("DEBUG: handleUserProfileRequest - Successfully extracted UID: %s", token.UID)
+			
+			if r.Method == http.MethodGet {
+				result, statusCode = processUserProfileRequest(r.Context(), token)
+			} else {
+				log.Printf("ERROR: Method not allowed: %s", r.Method)
+				result = map[string]interface{}{"error": "許可されていないメソッドです"}
+				statusCode = http.StatusMethodNotAllowed
+			}
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	json.NewEncoder(w).Encode(result)
 }
 
 // processLinkAccountRequest はアカウントリンクリクエストを処理します
@@ -652,15 +810,6 @@ func processUnlinkAccountRequest(ctx context.Context, req interface{}, token *au
 	// 注意：実際の実装では、Firebase Admin SDKの適切なメソッドを使用する必要があります
 	log.Printf("WARN: UnlinkProvider not implemented in current Firebase Admin SDK version")
 	return map[string]interface{}{"error": "アカウント解除機能は現在実装中です"}, http.StatusNotImplemented
-	if err != nil {
-		log.Printf("ERROR: Failed to unlink account for UID %s: %v", token.UID, err)
-		return map[string]interface{}{"error": "アカウントの解除に失敗しました"}, http.StatusInternalServerError
-	}
-
-	log.Printf("INFO: Account unlinked successfully for UID: %s, provider: %s", token.UID, unlinkData.Provider)
-	return map[string]interface{}{
-		"success": true,
-	}, http.StatusOK
 }
 
 // linkGoogleAccount はGoogleアカウントをリンクします
@@ -962,6 +1111,49 @@ func getUserDataByUID(ctx context.Context, uid string) (*UserData, error) {
 		Twitter:   []OAuthProviderInfo{},
 	}
 	return defaultUserData, nil
+}
+
+// lambdaUserProfileHandler はLambda環境での統合されたユーザープロフィール情報取得リクエストを処理します
+func lambdaUserProfileHandler(ctx context.Context, request events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
+	var result map[string]interface{}
+	var statusCode int
+
+	// 認証処理
+	authHeader := ""
+	if auth, exists := request.Headers["authorization"]; exists {
+		authHeader = auth
+	} else if auth, exists := request.Headers["Authorization"]; exists {
+		authHeader = auth
+	}
+
+	if authHeader == "" {
+		log.Printf("ERROR: Authorization header missing")
+		result = map[string]interface{}{"error": "認証が必要です"}
+		statusCode = http.StatusUnauthorized
+	} else {
+		// Bearerトークンの検証
+		token, err := validateAuthHeader(ctx, authHeader)
+		if err != nil {
+			log.Printf("ERROR: Token validation failed: %v", err)
+			result = map[string]interface{}{"error": "認証に失敗しました"}
+			statusCode = http.StatusUnauthorized
+		} else {
+			if request.RequestContext.HTTP.Method == http.MethodGet {
+				result, statusCode = processUserProfileRequest(ctx, token)
+			} else {
+				log.Printf("ERROR: Method not allowed: %s", request.RequestContext.HTTP.Method)
+				result = map[string]interface{}{"error": "許可されていないメソッドです"}
+				statusCode = http.StatusMethodNotAllowed
+			}
+		}
+	}
+
+	body, _ := json.Marshal(result)
+	return events.APIGatewayV2HTTPResponse{
+		StatusCode: statusCode,
+		Headers:    map[string]string{"Content-Type": "application/json"},
+		Body:       string(body),
+	}, nil
 }
 
 
