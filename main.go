@@ -344,6 +344,15 @@ func apiRouter(w http.ResponseWriter, r *http.Request) {
 		authMiddleware(http.HandlerFunc(handleLinkAccountRequest)).ServeHTTP(w, r)
 	} else if strings.HasPrefix(r.URL.Path, "/api/unlink-account") {
 		authMiddleware(http.HandlerFunc(handleUnlinkAccountRequest)).ServeHTTP(w, r)
+	} else if strings.HasPrefix(r.URL.Path, "/api/task") {
+		// パスが/api/taskの場合は、メソッドに応じて処理を分岐
+		if r.Method == "GET" {
+			authMiddleware(http.HandlerFunc(handleTaskGet)).ServeHTTP(w, r)
+		} else if r.Method == "POST" {
+			authMiddleware(http.HandlerFunc(handleTaskSave)).ServeHTTP(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
 	} else {
 		http.NotFound(w, r)
 	}
