@@ -380,7 +380,7 @@ func handleTimeRequest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 	}
 }
-
+//ふぁいと
 func main() {
 	apiHandler := http.HandlerFunc(apiRouter)
 
