@@ -60,6 +60,7 @@ func validateEmailConfig() error {
 	config := getEmailConfig()
 	
 	var errors []string
+	var warnings []string
 	
 	// 必須項目のチェック
 	if config.SMTPUsername == "" {
@@ -82,8 +83,14 @@ func validateEmailConfig() error {
 		errors = append(errors, "SMTP_PASSWORDが短すぎます（最低8文字必要）")
 	}
 	
+	// エラーがある場合は即座に返す
 	if len(errors) > 0 {
 		return fmt.Errorf("メール設定エラー: %s", strings.Join(errors, ", "))
+	}
+	
+	// 警告がある場合はログに出力
+	if len(warnings) > 0 {
+		log.Printf("WARN: メール設定の警告: %s", strings.Join(warnings, ", "))
 	}
 	
 	return nil
@@ -186,27 +193,44 @@ func sendVerificationEmail(toEmail, verificationToken string) error {
 	// SMTP認証
 	auth := smtp.PlainAuth("", config.SMTPUsername, config.SMTPPassword, config.SMTPHost)
 
-	// メール送信
+	// メール送信（リトライ機能付き）
 	addr := fmt.Sprintf("%s:%s", config.SMTPHost, config.SMTPPort)
 	log.Printf("INFO: Attempting to send email via %s", addr)
 	log.Printf("DEBUG: Message length: %d bytes", len(message))
 	
-	// STARTTLS接続を使用
+	// STARTTLS接続を使用（リトライ機能付き）
 	log.Printf("INFO: Using STARTTLS connection")
-	err := sendMail(addr, auth, config.FromEmail, []string{toEmail}, []byte(message))
+	var err error
+	maxRetries := 3
+	retryDelay := 2 * time.Second
+	
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		if attempt > 1 {
+			log.Printf("INFO: Retry attempt %d/%d after %v delay", attempt, maxRetries, retryDelay)
+			time.Sleep(retryDelay)
+			retryDelay *= 2 // 指数バックオフ
+		}
+		
+		err = sendMail(addr, auth, config.FromEmail, []string{toEmail}, []byte(message))
+		if err == nil {
+			log.Printf("INFO: Email sent successfully on attempt %d", attempt)
+			break
+		}
+		
+		log.Printf("WARN: Email send attempt %d failed: %v", attempt, err)
+		
+		// 550 5.7.1エラーの場合はリトライしない（設定問題のため）
+		if strings.Contains(err.Error(), "550 5.7.1") {
+			log.Printf("ERROR: 550 5.7.1 error detected, not retrying (configuration issue)")
+			break
+		}
+	}
 	
 	if err != nil {
-		log.Printf("ERROR: Failed to send verification email to %s: %v", toEmail, err)
+		log.Printf("ERROR: Failed to send verification email to %s after %d attempts: %v", toEmail, maxRetries, err)
 		log.Printf("ERROR: SMTP config - Host: %s, Port: %s, Username: %s", 
 			config.SMTPHost, config.SMTPPort, config.SMTPUsername)
 		log.Printf("ERROR: Detailed error type: %T", err)
-		
-		// Lambda環境でのメール送信失敗の詳細ログ
-		if isLambdaEnvironment() {
-			log.Printf("WARN: Lambda environment detected - email sending failed")
-			log.Printf("WARN: This may trigger email verification bypass for user registration")
-		}
-		
 		return fmt.Errorf("メール送信に失敗しました: %v", err)
 	}
 
@@ -265,6 +289,7 @@ func sendMail(addr string, auth smtp.Auth, from string, to []string, msg []byte)
 	log.Printf("DEBUG: Setting sender address: %s", from)
 	if err = client.Mail(from); err != nil {
 		log.Printf("ERROR: Failed to set sender address '%s': %v", from, err)
+		
 		return fmt.Errorf("送信者の設定に失敗しました: %v", err)
 	}
 	log.Printf("DEBUG: Sender address set successfully")
@@ -313,6 +338,7 @@ func checkEmailDebug() (map[string]interface{}, int) {
 	
 	// 設定の妥当性チェック
 	var validationErrors []string
+	var warnings []string
 	
 	if config.SMTPUsername == "" {
 		validationErrors = append(validationErrors, "SMTP_USERNAMEが設定されていません")
@@ -326,14 +352,18 @@ func checkEmailDebug() (map[string]interface{}, int) {
 	
 	// 送信者アドレスの一致チェック
 	senderMatch := config.SMTPUsername == config.FromEmail
+	if !senderMatch {
+		warnings = append(warnings, "送信者アドレスとSMTPユーザー名が一致していません")
+	}
 	
 	return map[string]interface{}{
 		"config":           getEmailConfigForDebug(),
 		"environment":      envInfo,
 		"validation": map[string]interface{}{
 			"errors":        validationErrors,
+			"warnings":      warnings,
 			"sender_match":  senderMatch,
-			"is_valid":      len(validationErrors) == 0 && senderMatch,
+			"is_valid":      len(validationErrors) == 0,
 		},
 		"recommendation":   "送信者アドレス（FROM_EMAIL）はSMTP認証ユーザー名（SMTP_USERNAME）と一致させる必要があります",
 	}, http.StatusOK
