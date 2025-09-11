@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -161,39 +160,35 @@ func processSignupRequest(ctx context.Context, req interface{}) (map[string]inte
 	log.Printf("DEBUG: Starting verification email send to: %s", cleanEmail)
 	if err := sendVerificationEmail(cleanEmail, verificationToken.Token); err != nil {
 		log.Printf("ERROR: Failed to send verification email: %v\n", err)
+		// メール送信に失敗してもユーザー作成は成功しているので、警告として記録
+		log.Printf("WARN: User created but verification email could not be sent")
 		
-		// Lambda環境でメール認証スキップが許可されている場合
-		if shouldSkipEmailVerification() {
-			log.Printf("INFO: Lambda environment detected, skipping email verification for user: %s", userRecord.UID)
-			
-			// ユーザーを自動的にメール認証済みとしてマーク
-			if err := markUserAsVerified(ctx, userRecord.UID); err != nil {
-				log.Printf("WARN: Failed to mark user as verified: %v", err)
-			}
-			
-			return map[string]interface{}{
-				"message": "ユーザーが正常に作成されました（Lambda環境のためメール認証をスキップしました）",
-				"uid":     userRecord.UID,
-				"lambdaMode": true,
-				"debug": map[string]interface{}{
-					"emailSendError": err.Error(),
-					"emailConfig":    getEmailConfigForDebug(),
-					"targetEmail":    cleanEmail,
-					"lambdaEnvironment": true,
-				},
-			}, http.StatusCreated
+		// エラーの種類に応じて詳細な情報を提供
+		debugInfo := map[string]interface{}{
+			"emailSendError": err.Error(),
+			"emailConfig":    getEmailConfigForDebug(),
+			"targetEmail":    cleanEmail,
 		}
 		
-		// 通常の環境では警告として記録
-		log.Printf("WARN: User created but verification email could not be sent")
+		// 550 5.7.1エラーの場合は特別な情報を追加
+		if strings.Contains(err.Error(), "550 5.7.1") {
+			debugInfo["errorType"] = "sakura_mail_server_rejection"
+			debugInfo["possibleCauses"] = []string{
+				"国外IPアドレスフィルタが有効になっている",
+				"送信者アドレスがさくらのメールサーバーで有効でない",
+				"メール送信制限に引っかかっている",
+			}
+			debugInfo["recommendedActions"] = []string{
+				"さくらのコントロールパネルで国外IPアドレスフィルタを無効にする",
+				"送信者アドレスがさくらのメールサーバーで有効であることを確認する",
+				"メール送信制限の設定を確認する",
+			}
+		}
+		
 		return map[string]interface{}{
 			"message": "ユーザーが正常に作成されました（認証メールの送信に失敗しました）",
 			"uid":     userRecord.UID,
-			"debug": map[string]interface{}{
-				"emailSendError": err.Error(),
-				"emailConfig":    getEmailConfigForDebug(),
-				"targetEmail":    cleanEmail,
-			},
+			"debug":   debugInfo,
 		}, http.StatusCreated
 	}
 	log.Printf("DEBUG: Verification email sent successfully")
@@ -202,19 +197,4 @@ func processSignupRequest(ctx context.Context, req interface{}) (map[string]inte
 		"message": "ユーザーが正常に作成されました。認証メールをお送りしました。",
 		"uid":     userRecord.UID,
 	}, http.StatusCreated
-}
-
-// markUserAsVerified はユーザーをメール認証済みとしてマークします
-func markUserAsVerified(ctx context.Context, uid string) error {
-	// Firebase Authでユーザーのメール認証状態を更新
-	params := (&auth.UserToUpdate{}).
-		EmailVerified(true)
-	
-	_, err := authClient.UpdateUser(ctx, uid, params)
-	if err != nil {
-		return fmt.Errorf("ユーザーの認証状態の更新に失敗しました: %v", err)
-	}
-	
-	log.Printf("INFO: User %s marked as email verified", uid)
-	return nil
 }
