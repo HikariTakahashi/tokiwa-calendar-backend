@@ -33,6 +33,8 @@ func handler(ctx context.Context, request events.APIGatewayV2HTTPRequest) (event
 		responseData, statusCode = processSignupRequest(ctx, request)
 	} else if strings.HasPrefix(path, "/api/login") && method == "POST" {
 		responseData, statusCode = processLoginRequest(ctx, request)
+	} else if strings.HasPrefix(path, "/api/verify") && method == "POST" {
+		responseData, statusCode = ProcessVerifyRequest(ctx, request)
 	} else if strings.HasPrefix(path, "/api/cleanup") && method == "POST" {
 		responseData, statusCode = ProcessCleanupRequest(ctx, request)
 	} else if strings.HasPrefix(path, "/api/user-data") {
@@ -85,6 +87,39 @@ func handler(ctx context.Context, request events.APIGatewayV2HTTPRequest) (event
 		responseData, statusCode = checkEmailConfig()
 	} else if strings.HasPrefix(path, "/email-debug") && method == "GET" {
 		responseData, statusCode = checkEmailDebug()
+	} else if strings.HasPrefix(path, "/api/task") {
+		// タスク関連のエンドポイント
+		authHeader := request.Headers["authorization"]
+		if authHeader == "" {
+			responseData = map[string]interface{}{"error": "認証が必要です"}
+			statusCode = http.StatusUnauthorized
+		} else {
+			parts := strings.Split(authHeader, " ")
+			if len(parts) == 2 && strings.ToLower(parts[0]) == "bearer" {
+				sessionToken := parts[1]
+				userSession, err := validateSessionToken(sessionToken)
+				if err != nil {
+					log.Printf("ERROR: Lambda - Failed to verify session token: %v", err)
+					responseData = map[string]interface{}{"error": "認証に失敗しました"}
+					statusCode = http.StatusUnauthorized
+				} else {
+					log.Printf("INFO: Lambda - Authenticated user: %s", userSession.UID)
+					newCtx := context.WithValue(ctx, "token", struct{ UID string }{UID: userSession.UID})
+					
+					if method == "GET" {
+						responseData, statusCode = processTaskGetLambda(newCtx, userSession.UID)
+					} else if method == "POST" {
+						responseData, statusCode = processTaskSaveLambda(newCtx, request)
+					} else {
+						responseData = map[string]interface{}{"error": "Method not allowed"}
+						statusCode = http.StatusMethodNotAllowed
+					}
+				}
+			} else {
+				responseData = map[string]interface{}{"error": "認証ヘッダーの形式が正しくありません"}
+				statusCode = http.StatusUnauthorized
+			}
+		}
 	} else if strings.HasPrefix(path, "/api/time") {
 		if method == "POST" {
 			// POST /api/time の処理
@@ -150,6 +185,59 @@ func handler(ctx context.Context, request events.APIGatewayV2HTTPRequest) (event
 		Headers:    corsHeaders,
 		Body:       string(body),
 	}, nil
+}
+
+// processTaskSaveLambda はLambda用のタスク保存処理です
+func processTaskSaveLambda(ctx context.Context, request events.APIGatewayV2HTTPRequest) (map[string]interface{}, int) {
+	// リクエストボディをパース
+	var taskRequest TaskSaveRequest
+	if err := json.Unmarshal([]byte(request.Body), &taskRequest); err != nil {
+		log.Printf("Failed to decode request body: %v", err)
+		return map[string]interface{}{"error": "Invalid request body"}, http.StatusBadRequest
+	}
+
+	// Firestoreクライアントを使用
+	if firestoreClient == nil {
+		log.Printf("Firestore client is not initialized")
+		return map[string]interface{}{"error": "Internal server error"}, http.StatusInternalServerError
+	}
+
+	// タスクデータを保存
+	if err := saveTaskDataToFirestore(ctx, firestoreClient, taskRequest.UserUID, taskRequest.Events, taskRequest.Notifications); err != nil {
+		log.Printf("Failed to save task data: %v", err)
+		return map[string]interface{}{"error": "Failed to save task data"}, http.StatusInternalServerError
+	}
+
+	return map[string]interface{}{
+		"message": "タスクデータが正常に保存されました",
+		"success": true,
+	}, http.StatusOK
+}
+
+// processTaskGetLambda はLambda用のタスク取得処理です
+func processTaskGetLambda(ctx context.Context, uid string) (map[string]interface{}, int) {
+	// Firestoreクライアントを使用
+	if firestoreClient == nil {
+		log.Printf("Firestore client is not initialized")
+		return map[string]interface{}{"error": "Internal server error"}, http.StatusInternalServerError
+	}
+
+	// 既存のタスクデータを取得
+	events, err := getExistingTaskData(ctx, firestoreClient, uid)
+	if err != nil {
+		log.Printf("Failed to get existing task data: %v", err)
+		return map[string]interface{}{"error": "Failed to get task data"}, http.StatusInternalServerError
+	}
+
+	// 通知データを取得（空のマップを返す）
+	notifications := make(map[string][]NotificationSlot)
+
+	return map[string]interface{}{
+		"events":        events,
+		"notifications": notifications,
+		"message":       "タスクデータが正常に取得されました",
+		"success":       true,
+	}, http.StatusOK
 }
 
 func main() {
