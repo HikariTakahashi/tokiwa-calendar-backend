@@ -31,6 +31,7 @@ type NotificationSlot struct {
 	Order int    `json:"order"`
 }
 
+
 // TaskSaveRequest タスク保存リクエストの構造体
 type TaskSaveRequest struct {
 	UserUID       string                           `json:"useruid"`
@@ -143,6 +144,17 @@ func handleTaskSave(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(response)
 		return
+	}
+
+	// 通知データがある場合、search_deadlineコレクションに保存
+	if request.Notifications != nil && len(request.Notifications) > 0 {
+		log.Printf("DEBUG: Saving deadline documents for notifications")
+		if err := saveDeadlineToFirestore(ctx, client, uid, request.Events, request.Notifications); err != nil {
+			log.Printf("WARN: Failed to save deadline documents: %v", err)
+			// 通知保存の失敗は警告として扱い、タスク保存は成功とする
+		} else {
+			log.Printf("DEBUG: Successfully saved deadline documents")
+		}
 	}
 
 	// 成功レスポンス
@@ -295,7 +307,7 @@ func saveTaskDataToFirestore(ctx context.Context, client *firestore.Client, uid 
 	log.Printf("DEBUG: Notification data to save: %+v", existingNotifications)
 
 	// Firestoreに保存
-	docRef := client.Collection("task").Doc(uid)
+	docRef := client.Collection("schedules_task").Doc(uid)
 	_, err = docRef.Set(ctx, map[string]interface{}{
 		"events":        existingTasks,
 		"notifications": existingNotifications,
@@ -313,7 +325,7 @@ func saveTaskDataToFirestore(ctx context.Context, client *firestore.Client, uid 
 
 // getExistingTaskData 既存のタスクデータを取得
 func getExistingTaskData(ctx context.Context, client *firestore.Client, uid string) (map[string][]TaskSlot, error) {
-	docRef := client.Collection("task").Doc(uid)
+	docRef := client.Collection("schedules_task").Doc(uid)
 	doc, err := docRef.Get(ctx)
 	if err != nil {
 		// デバッグ情報を出力
@@ -442,7 +454,7 @@ func getExistingTaskData(ctx context.Context, client *firestore.Client, uid stri
 
 // getExistingNotificationData 既存の通知データを取得
 func getExistingNotificationData(ctx context.Context, client *firestore.Client, uid string) (map[string][]NotificationSlot, error) {
-	docRef := client.Collection("task").Doc(uid)
+	docRef := client.Collection("schedules_task").Doc(uid)
 	doc, err := docRef.Get(ctx)
 	if err != nil {
 		// デバッグ情報を出力
@@ -543,3 +555,4 @@ func extractBearerToken(authHeader string) string {
 	}
 	return ""
 }
+
