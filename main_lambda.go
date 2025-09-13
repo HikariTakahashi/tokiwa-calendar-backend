@@ -83,6 +83,16 @@ func handler(ctx context.Context, request events.APIGatewayV2HTTPRequest) (event
 			json.Unmarshal([]byte(response.Body), &responseData)
 			statusCode = response.StatusCode
 		}
+	} else if strings.HasPrefix(path, "/api/google-access-token") && method == "GET" {
+		response, err := lambdaGoogleAccessTokenHandler(ctx, request)
+		if err != nil {
+			log.Printf("ERROR: Lambda Google access token handler error: %v", err)
+			responseData = map[string]interface{}{"error": "Internal server error"}
+			statusCode = http.StatusInternalServerError
+		} else {
+			json.Unmarshal([]byte(response.Body), &responseData)
+			statusCode = response.StatusCode
+		}
 	} else if strings.HasPrefix(path, "/email-config") && method == "GET" {
 		responseData, statusCode = checkEmailConfig()
 	} else if strings.HasPrefix(path, "/email-debug") && method == "GET" {
