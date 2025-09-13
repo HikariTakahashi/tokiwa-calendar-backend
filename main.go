@@ -313,6 +313,36 @@ func handleUnlinkAccountRequest(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+// handleGoogleAccessTokenRequest はGoogleアクセストークン取得リクエストを処理するハンドラです
+func handleGoogleAccessTokenRequest(w http.ResponseWriter, r *http.Request) {
+	// 認証情報をコンテキストから取得
+	tokenValue := r.Context().Value("token")
+	if tokenValue == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "認証が必要です"})
+		return
+	}
+
+	mockToken, ok := tokenValue.(struct{ UID string })
+	if !ok {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "認証が必要です"})
+		return
+	}
+
+	// Firebase auth.Token形式にマッピング
+	token := &auth.Token{
+		UID: mockToken.UID,
+	}
+
+	response, statusCode := processGoogleAccessTokenRequest(r.Context(), r, token)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	json.NewEncoder(w).Encode(response)
+}
+
 // apiRouter は、HTTPメソッドに基づいてリクエストを適切なハンドラに振り分けるルーターです。
 func apiRouter(w http.ResponseWriter, r *http.Request) {
 	// パスに基づいて処理を分岐
@@ -344,6 +374,8 @@ func apiRouter(w http.ResponseWriter, r *http.Request) {
 		authMiddleware(http.HandlerFunc(handleLinkAccountRequest)).ServeHTTP(w, r)
 	} else if strings.HasPrefix(r.URL.Path, "/api/unlink-account") {
 		authMiddleware(http.HandlerFunc(handleUnlinkAccountRequest)).ServeHTTP(w, r)
+	} else if strings.HasPrefix(r.URL.Path, "/api/google-access-token") {
+		authMiddleware(http.HandlerFunc(handleGoogleAccessTokenRequest)).ServeHTTP(w, r)
 	} else if strings.HasPrefix(r.URL.Path, "/api/task") {
 		// パスが/api/taskの場合は、メソッドに応じて処理を分岐
 		if r.Method == "GET" {
