@@ -38,6 +38,8 @@ type GoogleTokenResponse struct {
 	ExpiresIn    int    `json:"expires_in"`
 	RefreshToken string `json:"refresh_token,omitempty"`
 	IDToken      string `json:"id_token"`
+	Error        string `json:"error,omitempty"`
+	ErrorDesc    string `json:"error_description,omitempty"`
 }
 
 // GoogleUserInfo はGoogleユーザー情報の構造体です
@@ -319,6 +321,44 @@ func processGoogleAuthRequest(ctx context.Context, req interface{}) (map[string]
 		return map[string]interface{}{"error": "認証コードの交換に失敗しました"}, http.StatusBadRequest
 	}
 
+	// アカウントリンクの場合（linkUIDが指定されている場合）
+	if authData.LinkUID != "" {
+		log.Printf("INFO: Account linking mode for UID: %s", authData.LinkUID)
+		
+		// 指定されたUIDのユーザーが存在するか確認
+		_, err := authClient.GetUser(ctx, authData.LinkUID)
+		if err != nil {
+			log.Printf("ERROR: Link target user not found: %v", err)
+			return map[string]interface{}{"error": "リンク先のユーザーが見つかりません"}, http.StatusNotFound
+		}
+		
+		// カレンダー同期用のトークンを保存
+		if tokenResponse.RefreshToken != "" {
+			if err := saveGoogleCalendarTokenFromAuth(ctx, authData.LinkUID, tokenResponse.AccessToken, tokenResponse.RefreshToken, tokenResponse.TokenType, tokenResponse.ExpiresIn); err != nil {
+				log.Printf("WARN: Failed to save Google Calendar token: %v", err)
+				// エラーが発生してもログインは続行
+			} else {
+				log.Printf("INFO: Google Calendar token saved for UID: %s", authData.LinkUID)
+			}
+		}
+		
+		// セッショントークンを生成
+		sessionToken, err := generateSessionToken(authData.LinkUID, "")
+		if err != nil {
+			log.Printf("ERROR: Failed to generate session token for UID %s: %v\n", authData.LinkUID, err)
+			return map[string]interface{}{"error": "セッショントークンの生成に失敗しました"}, http.StatusInternalServerError
+		}
+		
+		log.Printf("INFO: Google Calendar authentication successful for UID: %s", authData.LinkUID)
+		
+		return map[string]interface{}{
+			"message":      "Googleカレンダーの読み取り権限が許可されました",
+			"uid":          authData.LinkUID,
+			"sessionToken": sessionToken,
+		}, http.StatusOK
+	}
+
+	// 通常のログイン処理
 	// Googleからユーザー情報を取得
 	userInfo, err := getUserInfoFromGoogle(tokenResponse.AccessToken)
 	if err != nil {
@@ -342,6 +382,16 @@ func processGoogleAuthRequest(ctx context.Context, req interface{}) (map[string]
 			return map[string]interface{}{"error": "このGoogleアカウントは既に他のアカウントで使用されています"}, http.StatusConflict
 		}
 		return map[string]interface{}{"error": "ユーザーアカウントの作成に失敗しました"}, http.StatusInternalServerError
+	}
+
+	// Google Calendarトークンを保存（Calendar API用）
+	if tokenResponse.RefreshToken != "" {
+		if err := saveGoogleCalendarTokenFromAuth(ctx, uid, tokenResponse.AccessToken, tokenResponse.RefreshToken, tokenResponse.TokenType, tokenResponse.ExpiresIn); err != nil {
+			log.Printf("WARN: Failed to save Google Calendar token: %v", err)
+			// エラーが発生してもログインは続行
+		} else {
+			log.Printf("INFO: Google Calendar token saved for UID: %s", uid)
+		}
 	}
 
 	// セッショントークンを生成
